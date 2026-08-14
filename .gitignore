@@ -1,0 +1,87 @@
+# Dependencies
+/venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+/vendor/
+
+# Laravel framework caches
+/storage/framework/cache/*
+/storage/framework/sessions/*
+/storage/framework/views/*
+/storage/framework/testing/*
+/storage/framework/.key
+/storage/framework/cache/data/*
+/storage/framework/cache/data/.gitignore
+/storage/framework/sessions/.gitignore
+/storage/framework/views/.gitignore
+/storage/framework/testing/.gitignore
+
+# Environment
+.env
+.env.local
+
+# API reference with test token (msp_pat_...) — never expose publicly
+API.md
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs
+*.log
+logs/
+http_hooks.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Build
+*.o
+*.so
+main
+
+# Docker
+.dockerignore
+
+# Node (if used)
+node_modules/
+.kilocode/node_modules/
+
+# ACME challenge tokens (Let's Encrypt)
+.well-known/acme-challenge/
+
+# Temporary files
+*.tmp
+*.bak
+
+# Migration safety snapshots (database/snapshots/<migration>/<table>.json.gz)
+database/snapshots/*/
+!database/snapshots/.gitignore
+
+# Database backups (php artisan db:backup)
+storage/app/backups/
+
+# Media files and thumbnails (runtime uploads)
+storage/app/public/media/
+
+# Test artifacts
+.phpunit.result.cache
+.phpunit.cache/
+.ruff_cache/
+
+# Browser automation artifacts
+.playwright-mcp/
+
+# Runtime storage (logs, daemons, test emissions)
+storage/logs/
+storage/app/emission-daemons/
+storage/app/test-emissions/

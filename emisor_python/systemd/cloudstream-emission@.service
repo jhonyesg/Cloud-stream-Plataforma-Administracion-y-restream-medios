@@ -1,0 +1,19 @@
+[Unit]
+Description=Cloudstream Emission Daemon for channel %i
+After=network.target
+
+[Service]
+Type=simple
+User=www
+Group=www
+WorkingDirectory=/www/wwwroot/cloudstream.mediaserver.com.co
+Environment="PYTHONUNBUFFERED=1"
+ExecStart=/www/wwwroot/cloudstream.mediaserver.com.co/emisor_python/venv/bin/python3 /www/wwwroot/cloudstream.mediaserver.com.co/emisor_python/main.py --channel-id=%i --port=0
+ExecStop=/bin/kill -TERM $MAINPID
+Restart=on-failure
+RestartSec=5
+StandardOutput=append:/var/log/cloudstream-emission/%i.log
+StandardError=append:/var/log/cloudstream-emission/%i.log
+
+[Install]
+WantedBy=multi-user.target
