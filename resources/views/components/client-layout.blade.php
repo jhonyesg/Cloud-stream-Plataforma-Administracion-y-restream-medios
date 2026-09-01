@@ -6,6 +6,8 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>{{ $title ?? config('app.name', 'Cloudstream') }}</title>
 
+    @include('partials._favicons')
+
     @php
         $themes = [
             'dashboard' => ['name' => 'Indigo',  'top' => 'border-indigo-500',  'page' => 'bg-indigo-50/40',  'btn' => 'bg-indigo-600 hover:bg-indigo-500',  'pill' => 'bg-indigo-100 text-indigo-800',  'text' => 'text-indigo-700',  'accent_hex' => '#818cf8'],

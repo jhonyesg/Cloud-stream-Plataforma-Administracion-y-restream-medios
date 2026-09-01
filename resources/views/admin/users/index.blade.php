@@ -3,6 +3,10 @@
         <h2 class="font-semibold text-xl text-gray-800 leading-tight">Usuarios</h2>
     </x-slot:header>
 
+    <div class="bg-amber-50 border border-amber-200 rounded-md p-3 text-xs text-amber-800 mb-4">
+        La habilitación de Restream se gestiona desde <a href="{{ route('admin.channels') }}" class="underline font-semibold">Canales</a> (botón Restream por canal).
+    </div>
+
     <div class="flex justify-between items-center mb-4">
         <p class="text-sm text-gray-600">{{ $users->total() }} usuarios</p>
         <button
@@ -17,18 +21,18 @@
 
     <div class="bg-white rounded-lg shadow overflow-hidden">
         <table class="min-w-full divide-y divide-gray-200">
-            <thead class="bg-gray-50">
-                <tr>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Usuario</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Rol</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Estado</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Owner</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Creado</th>
-                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Acciones</th>
-                </tr>
-            </thead>
-            <tbody class="bg-white divide-y divide-gray-200">
+<thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Usuario</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Rol</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Estado</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Owner</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Creado</th>
+                        <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
                 @foreach($users as $u)
                     <tr>
                         <td class="px-6 py-4 whitespace-nowrap">
@@ -53,20 +57,26 @@
                                 <button
                                     type="button"
                                     @click="$store.modals.open('edit-user', { id: '{{ $u->id }}' })"
-                                    class="text-indigo-600 hover:text-indigo-900"
+                                    title="Editar usuario"
+                                    class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md bg-gradient-to-br from-indigo-400 to-indigo-600 text-white shadow-sm hover:from-indigo-500 hover:to-indigo-700 hover:scale-105 active:scale-95 transition"
                                 >
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
                                     Editar
                                 </button>
                                 @if(auth()->id() !== $u->id)
                                     <button
                                         type="button"
                                         @click="$store.modals.open('confirm-delete', { action: '{{ route('admin.users.destroy', $u) }}', method: 'DELETE', title: 'Eliminar usuario', message: '¿Eliminar a {{ addslashes($u->name) }}? Esta acción no se puede deshacer.' })"
-                                        class="text-red-600 hover:text-red-900"
+                                        title="Eliminar usuario"
+                                        class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md bg-gradient-to-br from-red-400 to-red-600 text-white shadow-sm hover:from-red-500 hover:to-red-700 hover:scale-105 active:scale-95 transition"
                                     >
+                                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M1 7h22M9 7V4a2 2 0 012-2h2a2 2 0 012 2v3"/></svg>
                                         Eliminar
                                     </button>
                                 @else
-                                    <span class="text-xs text-gray-400" title="No puedes eliminarte a ti mismo">(tú)</span>
+                                    <span class="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-md bg-gray-100 text-gray-500 border border-gray-200" title="No puedes eliminarte a ti mismo">
+                                        (tú)
+                                    </span>
                                 @endif
                             </div>
                         </td>

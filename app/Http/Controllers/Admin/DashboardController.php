@@ -7,6 +7,8 @@ use App\Http\Requests\Admin\StoreChannelRequest;
 use App\Http\Requests\Admin\StoreUserRequest;
 use App\Http\Requests\Admin\UpdateChannelRequest;
 use App\Http\Requests\Admin\UpdateUserRequest;
+use App\Mail\PasswordChangedNotification;
+use App\Models\AuditLog;
 use App\Models\Channel;
 use App\Models\MediaItem;
 use App\Models\Playlist;
@@ -15,6 +17,8 @@ use App\Models\VirtualScreen;
 use App\Services\MediaserverMetricsAggregator;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Throwable;
@@ -97,12 +101,39 @@ public function userStore(StoreUserRequest $request): JsonResponse
     public function userUpdate(UpdateUserRequest $request, User $user): JsonResponse
     {
         $data = $request->validated();
+        $passwordChanged = ! empty($data['password']);
 
-        if (empty($data['password'])) {
+        if (! $passwordChanged) {
             unset($data['password']);
         }
 
-        $user->update($data);
+        $admin = $request->user();
+
+        DB::transaction(function () use ($user, $data, $passwordChanged, $admin, $request) {
+            $user->update($data);
+
+            if ($passwordChanged) {
+                AuditLog::record(
+                    'update.user.password',
+                    'user',
+                    $user->id,
+                    null,
+                    ['changed_by' => 'admin', 'ip' => $request->ip()],
+                );
+
+                Mail::to($user)->queue(new PasswordChangedNotification(
+                    user: $user,
+                    changedBy: 'admin',
+                    actor: $admin,
+                    ip: $request->ip(),
+                ));
+
+                DB::table('sessions')->where('user_id', $user->id)->delete();
+
+                $user->setRememberToken(Str::random(60));
+                $user->save();
+            }
+        });
 
         return response()->json([
             'message' => 'Usuario actualizado.',
@@ -216,7 +247,7 @@ public function userStore(StoreUserRequest $request): JsonResponse
         ]);
     }
 
-    public function channelDestroy(Channel $channel): JsonResponse
+    public function channelArchive(Channel $channel): JsonResponse
     {
         $channel->status = 'archived';
         $channel->save();
@@ -224,6 +255,15 @@ public function userStore(StoreUserRequest $request): JsonResponse
         return response()->json([
             'message' => 'Canal archivado.',
             'channel' => $channel,
+        ]);
+    }
+
+    public function channelDestroy(Channel $channel): JsonResponse
+    {
+        $channel->delete();
+
+        return response()->json([
+            'message' => 'Canal eliminado.',
         ]);
     }
 }

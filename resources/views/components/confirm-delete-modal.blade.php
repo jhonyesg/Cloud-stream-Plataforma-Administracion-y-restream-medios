@@ -11,6 +11,8 @@
             get title() { return ($store.modals.payload || {}).title || 'Confirmar eliminación'; },
             get message() { return ($store.modals.payload || {}).message || '¿Estás seguro?'; },
             get body() { return ($store.modals.payload || {}).body || null; },
+            get confirmLabel() { return ($store.modals.payload || {}).confirmLabel || 'Sí, eliminar'; },
+            get busyLabel() { return ($store.modals.payload || {}).busyLabel || 'Eliminando…'; },
             submit() {
                 if (!this.action) return;
                 this.busy = true;
@@ -81,7 +83,7 @@
                         class="inline-flex items-center px-4 py-2 bg-red-600 border border-transparent rounded-lg font-semibold text-xs text-white uppercase tracking-widest hover:bg-red-500 disabled:opacity-50 transition shadow-sm">
                     <svg x-show="!busy" class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M1 7h22M9 7V4a2 2 0 012-2h2a2 2 0 012 2v3"/></svg>
                     <svg x-show="busy" class="animate-spin w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
-                    <span x-text="busy ? 'Eliminando…' : 'Sí, eliminar'"></span>
+                    <span x-text="busy ? busyLabel : confirmLabel"></span>
                 </button>
             </div>
         </div>

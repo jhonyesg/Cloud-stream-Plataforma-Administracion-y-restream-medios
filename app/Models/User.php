@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Collection;
@@ -110,6 +111,60 @@ class User extends Authenticatable
     public function hasStorageQuota(): bool
     {
         return $this->storage_limit_bytes !== null;
+    }
+
+    public function restreamQuotas(): HasMany
+    {
+        return $this->hasMany(RestreamQuota::class, 'user_id');
+    }
+
+    public function restreamQuotaFor(?string $channelId): ?RestreamQuota
+    {
+        if (! $channelId) {
+            return null;
+        }
+        return $this->restreamQuotas()->where('channel_id', $channelId)->first();
+    }
+
+    public function restreamTargets(): HasMany
+    {
+        return $this->hasMany(RestreamTarget::class, 'user_id');
+    }
+
+    public function hasRestreamEnabled(): bool
+    {
+        return $this->restreamQuotas()->where('enabled', true)->exists();
+    }
+
+    public function hasRestreamEnabledFor(?string $channelId): bool
+    {
+        if (! $channelId) {
+            return false;
+        }
+        $quota = $this->restreamQuotaFor($channelId);
+        return $quota && (bool) $quota->enabled;
+    }
+
+    public function restreamMaxOutputsFor(?string $channelId): int
+    {
+        $quota = $this->restreamQuotaFor($channelId);
+        return ($quota && (bool) $quota->enabled) ? (int) $quota->max_outputs : 0;
+    }
+
+    public function restreamUsedOutputsFor(?string $channelId): int
+    {
+        if (! $channelId) {
+            return 0;
+        }
+        if ($this->relationLoaded('restreamTargets')) {
+            return $this->restreamTargets->where('channel_id', $channelId)->where('enabled', true)->count();
+        }
+        return $this->restreamTargets()->where('channel_id', $channelId)->where('enabled', true)->count();
+    }
+
+    public function restreamRemainingSlotsFor(?string $channelId): int
+    {
+        return max(0, $this->restreamMaxOutputsFor($channelId) - $this->restreamUsedOutputsFor($channelId));
     }
 
     public function getStorageLimitHumanAttribute(): string

@@ -1,0 +1,24 @@
+{
+    "name": "Cloudstream",
+    "short_name": "Cloudstream",
+    "description": "Cloudstream — Servicio de señal de TV en vivo por Internet en Colombia: streaming 24/7, programador de contenido, cuñas publicitarias y restream a Facebook, YouTube y TikTok.",
+    "icons": [
+        {
+            "src": "/icons/icon-192.png",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "any"
+        },
+        {
+            "src": "/icons/icon-512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "any maskable"
+        }
+    ],
+    "theme_color": "#0a0f2c",
+    "background_color": "#050816",
+    "display": "standalone",
+    "start_url": "/",
+    "scope": "/"
+}

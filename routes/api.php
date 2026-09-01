@@ -74,3 +74,7 @@ Route::get('/internal/channels/{channel}/emission/position', [\App\Http\Controll
 Route::get('/internal/channels/{channel}/emission/timeline', [\App\Http\Controllers\Api\EmissionPositionController::class, 'timeline']);
 Route::get('/internal/channels/{channel}/emission/virtual-screen', [\App\Http\Controllers\Api\EmissionPositionController::class, 'virtualScreen']);
 Route::get('/internal/channels/{channel}/emission/channel', [\App\Http\Controllers\Api\EmissionPositionController::class, 'channelInfo']);
+
+// Internal restream endpoints (localhost only, no auth required).
+Route::post('/internal/restream/{target}/heartbeat', [\App\Http\Controllers\Api\RestreamHeartbeatController::class, 'heartbeat']);
+Route::get('/internal/restream/{target}/log', [\App\Http\Controllers\Api\RestreamHeartbeatController::class, 'log']);

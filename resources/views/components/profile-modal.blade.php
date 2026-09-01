@@ -67,6 +67,13 @@
                 </div>
             </div>
 
+            <p class="mt-4 text-xs text-gray-500 flex items-start gap-1.5">
+                <svg class="w-3.5 h-3.5 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                <span>Este formulario no cambia tu contraseña. Para cambiarla, usa el botón <strong>"Cambiar contraseña"</strong> del menú superior.</span>
+            </p>
+
             <div class="mt-6 -mx-6 -mb-5 px-6 py-4 bg-gray-50 border-t border-gray-100 flex justify-end gap-2 rounded-b-2xl relative z-40">
                 <button type="button" @click="Alpine.store('modals').close()" :disabled="busy"
                         class="inline-flex items-center px-4 py-2 bg-white border border-gray-300 rounded-lg font-semibold text-xs text-gray-700 uppercase tracking-widest shadow-sm hover:bg-gray-50 transition">

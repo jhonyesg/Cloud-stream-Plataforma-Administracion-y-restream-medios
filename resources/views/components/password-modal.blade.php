@@ -6,16 +6,19 @@
     <div
         x-data="{
             busy: false,
+            state: 'form',
             form: { current_password: '', password: '', password_confirmation: '' },
             init() {
                 this.$watch('$store.modals.current', (val) => {
                     if (val === 'password') {
+                        this.state = 'form';
                         this.form = { current_password: '', password: '', password_confirmation: '' };
                     }
                 });
             },
             submit() {
                 this.busy = true;
+                this.state = 'submitting';
                 Alpine.store('modals').errors = {};
                 const url = @js(url('/password'));
                 fetch(url, {
@@ -31,21 +34,38 @@
                     this.busy = false;
                     const data = await r.json().catch(() => ({}));
                     if (r.ok) {
-                        Alpine.store('modals').close();
-                        window.dispatchEvent(new CustomEvent('crud-success', { detail: { message: 'Contraseña actualizada correctamente.' } }));
+                        this.state = 'success';
+                        setTimeout(() => {
+                            Alpine.store('modals').close();
+                            window.dispatchEvent(new CustomEvent('crud-success', { detail: { message: 'Contraseña actualizada. Las demás sesiones fueron cerradas.' } }));
+                            this.state = 'form';
+                        }, 3000);
                     } else if (r.status === 422) {
+                        this.state = 'error';
                         Alpine.store('modals').errors = data.errors || {};
                     } else {
+                        this.state = 'error';
                         window.dispatchEvent(new CustomEvent('crud-error', { detail: { message: 'No se pudo actualizar la contraseña.' } }));
                     }
                 }).catch(() => {
                     this.busy = false;
+                    this.state = 'error';
                     window.dispatchEvent(new CustomEvent('crud-error', { detail: { message: 'Error de red al actualizar la contraseña.' } }));
                 });
             }
         }"
     >
-        <form @submit.prevent="submit()" class="px-6 py-5">
+        <div x-show="state === 'success'" class="px-6 py-10 text-center" x-transition>
+            <div class="mx-auto w-14 h-14 rounded-full bg-green-100 flex items-center justify-center mb-4">
+                <svg class="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
+                </svg>
+            </div>
+            <h3 class="text-base font-semibold text-gray-900">Tu contraseña fue actualizada</h3>
+            <p class="mt-1 text-sm text-gray-600">Las demás sesiones fueron cerradas. Este mensaje se cerrará en unos segundos.</p>
+        </div>
+
+        <form x-show="state !== 'success'" @submit.prevent="submit()" class="px-6 py-5">
             <div class="space-y-4">
                 <x-password-input name="current_password"
                                   label="Contraseña actual"

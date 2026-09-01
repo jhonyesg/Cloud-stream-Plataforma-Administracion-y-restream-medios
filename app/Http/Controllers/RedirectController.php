@@ -9,12 +9,12 @@ class RedirectController extends Controller
 {
     public function home(Request $request)
     {
-        if (! Auth::check()) {
-            return redirect()->route('login');
+        if (Auth::check()) {
+            $user = Auth::user();
+            return redirect()->route($user->isAdmin() ? 'admin.dashboard' : 'client.dashboard');
         }
 
-        $user = Auth::user();
-        return redirect()->route($user->isAdmin() ? 'admin.dashboard' : 'client.dashboard');
+        return view('landing');
     }
 
     public function dashboard(Request $request)

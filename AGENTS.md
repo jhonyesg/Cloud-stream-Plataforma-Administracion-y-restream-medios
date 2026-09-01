@@ -145,3 +145,95 @@ inserted. The daemon re-fetches the timeline, resolves the item for the current
   `timeline_version`, `overflow_sec`). `pipeline_pid` mirrors `ffmpeg_pid`
   for compatibility. The table is present but idle until the engine is
   rebuilt.
+
+## Restream Module
+
+Configuration surface for re-broadcasting a channel to external platforms
+(Facebook Live, TikTok Live, YouTube Live, custom RTMP). The actual playout
+engine is **not** wired up — this ships the data + UI + APIs only; a future
+change will consume `restream_targets` to drive the engine.
+
+- **Tables**: `restream_quotas` (1 row per user — the habilitation) and
+  `restream_targets` (N rows per user — the destination configurations).
+  `restream_quotas` has `CHECK (max_outputs IN (1, 2, 3, 4))`.
+- **Habilitation tiers** (admin-only, controlled from the admin panel):
+  - Tier 1 (base, free) — 1 simultaneous destination.
+  - Tier 2 (+1 destino, paid) — 2 destinations.
+  - Tier 3 (+2 destinos, paid) — 3 destinations.
+  - Tier 4 (+3 destinos, paid) — 4 destinations.
+  Payment, billing and the commercial cycle are **out of scope** of this
+  module. The admin simply grants/lowers the tier from the panel.
+- **Client restrictions**: targets are scoped to `effectiveChannelIds()` and
+  gated by the `restream.enabled` middleware alias. The active-target cap is
+  enforced atomically inside `DB::transaction` +
+  `RestreamQuota::lockForUpdate()` via `App\Services\Restream\RestreamQuotaGuard`.
+- **`stream_key`** is encrypted via Laravel `Crypt`; never returned by list
+  endpoints. `RestreamTarget::toArray()` redacts it and emits
+  `stream_key_set` + `stream_key_last4` instead.
+- **Admin route**: `GET /admin/restream-targets` (read-only diagnostic).
+  Admin does **not** edit or delete targets (design D8).
+- **Dual-implementation**: habilitation lives in admin; target CRUD lives
+  in client. Both sides have a `Restream` UI surface; the modal pattern is
+  `<x-restream-modal />` (admin) and `<x-restream-target-modal />` (client).
+
+## Restream Engine
+
+The actual playout loop for the Restream module. Each enabled target is
+backed by one Python daemon (`restream_daemon/`) that follows the same
+standard as the emission daemon (`emisor_python/`): supervisor loop with
+restart/backoff, heartbeat every 5s, `[STATS]` every 5s, watchdog, rotated
+log, and a systemd unit per target. The old PHP launcher/supervisor
+(`RestreamLauncher`, `RestreamSupervisor`, `restream:supervise`) was
+**removed** — the daemon self-supervises.
+
+- **Per-target FFmpeg command** (built by `restream_daemon/daemon/target_daemon.py`
+  from the config JSON written by `App\Services\Restream\RestreamOrchestrator`):
+  ```
+  ffmpeg -hide_banner -loglevel info -re -i {source_url}
+         -c:v copy -c:a aac -ar 44100 -ac 2 -b:a 128k
+         -f flv -rtmp_live live {destination_url}/{stream_key}
+  ```
+  Note the corrected `-rtmp_live live` flag (ffmpeg 4.4 rejects `live=1`).
+  Source = `restream_targets.source_url` (NULL → fallback to
+  `channel.public_hls_url`). Video is copied; audio is transcoded to AAC
+  because most social destinations reject non-AAC audio. The stream key is
+  decrypted by the orchestrator, written to the config JSON (0600), read
+  once by the daemon, and the config file is deleted immediately; the key
+  is never logged.
+- **Orchestrator** (`App\Services\Restream\RestreamOrchestrator`):
+  `start()` writes the config, sets `status='starting'`, spawns the daemon
+  via `proc_open`, health-checks at 500ms (422 with the real cause from the
+  log if it dies), and stores the daemon PID in `pipeline_pid`. `stop()`
+  SIGTERMs the daemon, waits up to 10s for its `offline` heartbeat, then
+  force-kills if needed.
+- **Daemon self-supervision** (`restream_daemon/main.py`): if the ffmpeg
+  child dies, it restarts with exponential backoff (max 5 in 60s, then 30s
+  cooldown and heartbeat `error`). A watchdog restarts the child if it is
+  alive but produces no progress for 15s. Each target is fully isolated:
+  its own daemon, its own ffmpeg child, its own log — the N enabled slots
+  never interfere with each other.
+- **Heartbeat**: the daemon POSTs to
+  `POST /api/internal/restream/{target}/heartbeat` (localhost-only) every
+  5s with `status` (`starting`/`live`/`error`/`offline`), the ffmpeg child
+  PID, and `error_message`. Laravel updates `restream_targets.status`,
+  `pipeline_pid`, `last_heartbeat_at`, `last_error`. Liveness = heartbeat
+  freshness (< 15s); a stale `live` target is reported as `error`.
+- **Diagnostics**: `restream:status [--user=ID]` prints a table using
+  heartbeat freshness. Per-target logs live in
+  `storage/logs/restream/{target_id}.log` (rotated, gitignored) and are
+  exposed to the UI via `GET /client|admin/restream/channels/{c}/restream-targets/{t}/log`.
+- **HTTP endpoints** (client, scoped via `canAccessChannel`):
+  `POST /client/channels/{c}/restream-targets/{t}/start` and `.../stop`.
+  Both write `audit_logs` with `action='start|stop.restream_target'`.
+- **Client/admin panels** poll the index every 10s (pausing on
+  `visibilitychange`) and offer a per-target "Log de restream" accordion
+  that polls every 5s while open (same pattern as the scheduler's emission
+  log). Live targets show a pulsing green dot; errored targets show a red
+  dot with `last_error` as tooltip.
+- **FFmpeg binary** resolved from `FFMPEG_BIN` env (default `ffmpeg`) by
+  the orchestrator and written into the daemon config.
+- **Deployment**: per-target systemd unit
+  `restream_daemon/systemd/cloudstream-restream@.service`
+  (`ExecStart=/usr/bin/python3 .../restream_daemon/main.py --target-id=%i`),
+  same style as `cloudstream-emission@.service`. Start is either systemd
+  OR the orchestrator (HTTP), not both, to avoid double daemons.

@@ -12,6 +12,10 @@
                 Alpine.store('modals').errors = {};
                 const form = this.$refs.form;
                 const data = Object.fromEntries(new FormData(form).entries());
+                if (typeof data.assigned_user_ids === 'string') {
+                    try { data.assigned_user_ids = JSON.parse(data.assigned_user_ids || '[]'); }
+                    catch (e) { data.assigned_user_ids = []; }
+                }
                 const url = @js(route('admin.channels.store'));
                 fetch(url, {
                     method: 'POST',
@@ -40,11 +44,37 @@
                 });
             }
         }"
+        class="flex flex-col flex-1 min-h-0"
     >
-        <form x-ref="form" @submit.prevent="submit()" class="px-6 py-5">
-            @include('admin.channels.partials.form', ['channel' => $channel])
+        <form x-ref="form" @submit.prevent="submit()" class="flex flex-col flex-1 min-h-0">
+            <div
+                x-show="$store.modals && $store.modals.errors && Object.keys($store.modals.errors).length > 0"
+                x-transition.opacity
+                class="shrink-0 px-6 py-3 bg-red-50 border-b border-red-200"
+            >
+                <div class="flex items-start gap-2">
+                    <svg class="w-5 h-5 text-red-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-3L13.73 4a2 2 0 00-3.46 0L3.34 16c-.77 1.33.19 3 1.73 3z"/>
+                    </svg>
+                    <div class="text-sm text-red-700 min-w-0">
+                        <p class="font-semibold">Revisa los campos del formulario:</p>
+                        <ul class="mt-1 list-disc list-inside space-y-0.5">
+                            <template x-for="(msgs, field) in $store.modals.errors" :key="field">
+                                <li>
+                                    <span class="font-medium" x-text="field"></span>:
+                                    <span x-text="(msgs || []).join(' ')"></span>
+                                </li>
+                            </template>
+                        </ul>
+                    </div>
+                </div>
+            </div>
 
-            <div class="mt-6 -mx-6 -mb-5 px-6 py-4 bg-gray-50 border-t border-gray-100 flex justify-end gap-2 rounded-b-2xl relative z-40">
+            <div class="overflow-y-auto flex-1 min-h-0 px-6 py-5">
+                @include('admin.channels.partials.form', ['channel' => $channel])
+            </div>
+
+            <div class="shrink-0 px-6 py-4 bg-gray-50 border-t border-gray-100 flex justify-end gap-2 rounded-b-2xl relative z-40">
                 <button type="button" @click="Alpine.store('modals').close()" :disabled="busy"
                         class="inline-flex items-center px-4 py-2 bg-white border border-gray-300 rounded-lg font-semibold text-xs text-gray-700 uppercase tracking-widest shadow-sm hover:bg-gray-50 transition">
                     Cancelar

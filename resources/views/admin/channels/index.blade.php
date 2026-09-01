@@ -74,20 +74,26 @@
                             <button type="button" @click="$store.modals.open('virtual-screen-editor', { channel_id: '{{ $ch->id }}', channel_name: '{{ addslashes($ch->display_name) }}' })" title="Configurar pantalla virtual" class="w-8 h-8 rounded-lg bg-gradient-to-br from-teal-400 to-teal-600 shadow-sm flex items-center justify-center text-white hover:from-teal-500 hover:to-teal-700 hover:scale-110 active:scale-95 transition">
                                 <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
                             </button>
+                            <button type="button" @click="$store.modals.open('restream', { channel_id: '{{ $ch->id }}', channel_name: '{{ addslashes($ch->display_name) }}' })" title="Configurar Restream" class="w-8 h-8 rounded-lg bg-gradient-to-br from-rose-400 to-rose-600 shadow-sm flex items-center justify-center text-white hover:from-rose-500 hover:to-rose-700 hover:scale-110 active:scale-95 transition">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+                            </button>
                             <button type="button" @click="$store.modals.open('live-viewer', { channel_id: '{{ $ch->id }}', channel_name: '{{ addslashes($ch->display_name) }}', slug: '{{ $ch->slug }}' })" title="Ver emisión en vivo" class="w-8 h-8 rounded-lg bg-gradient-to-br from-sky-400 to-sky-600 shadow-sm flex items-center justify-center text-white hover:from-sky-500 hover:to-sky-700 hover:scale-110 active:scale-95 transition">
                                 <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
                             </button>
                             @if($ch->status !== 'archived')
-                                <button type="button" @click="$store.modals.open('confirm-delete', { action: '{{ route('admin.channels.destroy', $ch) }}', method: 'DELETE', title: 'Archivar canal', message: '¿Archivar {{ addslashes($ch->display_name) }}? El canal quedará como archivado y no se mostrará por defecto.' })" title="Archivar canal" class="w-8 h-8 rounded-lg bg-gradient-to-br from-red-400 to-red-600 shadow-sm flex items-center justify-center text-white hover:from-red-500 hover:to-red-700 hover:scale-110 active:scale-95 transition">
-                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M1 7h22M9 7V4a2 2 0 012-2h2a2 2 0 012 2v3"/></svg>
+                                <button type="button" @click="$store.modals.open('confirm-delete', { action: '{{ route('admin.channels.archive', $ch) }}', method: 'PATCH', title: 'Archivar canal', message: '¿Archivar {{ addslashes($ch->display_name) }}? El canal quedará como archivado y no se mostrará por defecto, pero podrás reactivarlo cuando quieras.', confirmLabel: 'Sí, archivar', busyLabel: 'Archivando…' })" title="Archivar canal" class="w-8 h-8 rounded-lg bg-gradient-to-br from-amber-400 to-amber-600 shadow-sm flex items-center justify-center text-white hover:from-amber-500 hover:to-amber-700 hover:scale-110 active:scale-95 transition">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z"/></svg>
                                 </button>
                             @endif
+                            <button type="button" @click="$store.modals.open('confirm-delete', { action: '{{ route('admin.channels.destroy', $ch) }}', method: 'DELETE', title: 'Eliminar canal', message: '¿Eliminar {{ addslashes($ch->display_name) }}? El canal se ocultará de los listados; el registro permanece recuperable.', confirmLabel: 'Sí, eliminar' })" title="Eliminar canal" class="w-8 h-8 rounded-lg bg-gradient-to-br from-red-400 to-red-600 shadow-sm flex items-center justify-center text-white hover:from-red-500 hover:to-red-700 hover:scale-110 active:scale-95 transition">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M1 7h22M9 7V4a2 2 0 012-2h2a2 2 0 012 2v3"/></svg>
+                            </button>
                         </div>
                     </div>
 
                     <div class="bg-black aspect-video relative">
                         @if($ch->public_hls_url)
-                            <video id="adminLiveCard-{{ $ch->id }}" data-hls-url="{{ $ch->public_hls_url }}" autoplay muted playsinline class="w-full h-full"></video>
+                            <video id="adminLiveCard-{{ $ch->id }}" data-hls-url="{{ $ch->public_hls_url }}" muted playsinline preload="none" class="w-full h-full"></video>
                             <div class="absolute top-2 left-2 z-10 flex items-center gap-1.5 px-2 py-1 rounded-md bg-black/70 text-white text-[10px] font-bold uppercase pointer-events-none">
                                 <span class="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse"></span>
                                 Live
@@ -170,16 +176,22 @@
                                     <button type="button" @click="$store.modals.open('virtual-screen-editor', { channel_id: '{{ $ch->id }}', channel_name: '{{ addslashes($ch->display_name) }}' })" title="Configurar pantalla virtual" class="w-9 h-9 rounded-lg bg-gradient-to-br from-teal-400 to-teal-600 shadow-sm flex items-center justify-center text-white hover:from-teal-500 hover:to-teal-700 hover:scale-110 active:scale-95 transition">
                                         <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
                                     </button>
+                                    <button type="button" @click="$store.modals.open('restream', { channel_id: '{{ $ch->id }}', channel_name: '{{ addslashes($ch->display_name) }}' })" title="Configurar Restream" class="w-9 h-9 rounded-lg bg-gradient-to-br from-rose-400 to-rose-600 shadow-sm flex items-center justify-center text-white hover:from-rose-500 hover:to-rose-700 hover:scale-110 active:scale-95 transition">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+                                    </button>
                                     <button type="button" @click="$store.modals.open('live-viewer', { channel_id: '{{ $ch->id }}', channel_name: '{{ addslashes($ch->display_name) }}', slug: '{{ $ch->slug }}' })" title="Ver emisión en vivo" class="w-9 h-9 rounded-lg bg-gradient-to-br from-sky-400 to-sky-600 shadow-sm flex items-center justify-center text-white hover:from-sky-500 hover:to-sky-700 hover:scale-110 active:scale-95 transition">
                                         <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
                                     </button>
                                     @if($ch->status !== 'archived')
-                                        <button type="button" @click="$store.modals.open('confirm-delete', { action: '{{ route('admin.channels.destroy', $ch) }}', method: 'DELETE', title: 'Archivar canal', message: '¿Archivar {{ addslashes($ch->display_name) }}? El canal quedará como archivado y no se mostrará por defecto.' })" title="Archivar canal" class="w-9 h-9 rounded-lg bg-gradient-to-br from-red-400 to-red-600 shadow-sm flex items-center justify-center text-white hover:from-red-500 hover:to-red-700 hover:scale-110 active:scale-95 transition">
-                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M1 7h22M9 7V4a2 2 0 012-2h2a2 2 0 012 2v3"/></svg>
+                                        <button type="button" @click="$store.modals.open('confirm-delete', { action: '{{ route('admin.channels.archive', $ch) }}', method: 'PATCH', title: 'Archivar canal', message: '¿Archivar {{ addslashes($ch->display_name) }}? El canal quedará como archivado y no se mostrará por defecto, pero podrás reactivarlo cuando quieras.', confirmLabel: 'Sí, archivar', busyLabel: 'Archivando…' })" title="Archivar canal" class="w-9 h-9 rounded-lg bg-gradient-to-br from-amber-400 to-amber-600 shadow-sm flex items-center justify-center text-white hover:from-amber-500 hover:to-amber-700 hover:scale-110 active:scale-95 transition">
+                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z"/></svg>
                                         </button>
                                     @else
                                         <span class="inline-flex items-center px-2 py-1 text-[10px] font-semibold rounded-md bg-gray-100 text-gray-500" title="Canal archivado">Archivado</span>
                                     @endif
+                                    <button type="button" @click="$store.modals.open('confirm-delete', { action: '{{ route('admin.channels.destroy', $ch) }}', method: 'DELETE', title: 'Eliminar canal', message: '¿Eliminar {{ addslashes($ch->display_name) }}? El canal se ocultará de los listados; el registro permanece recuperable.', confirmLabel: 'Sí, eliminar' })" title="Eliminar canal" class="w-9 h-9 rounded-lg bg-gradient-to-br from-red-400 to-red-600 shadow-sm flex items-center justify-center text-white hover:from-red-500 hover:to-red-700 hover:scale-110 active:scale-95 transition">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M1 7h22M9 7V4a2 2 0 012-2h2a2 2 0 012 2v3"/></svg>
+                                    </button>
                                 </div>
                             </td>
                         </tr>
@@ -197,6 +209,7 @@
     <x-virtual-screen-editor-modal />
     <x-virtual-screen-preview-viewer-modal />
     <x-live-viewer-modal />
+    <x-restream-modal />
 </x-admin-layout>
 
 <script>
@@ -208,9 +221,10 @@
         if (!url) return;
         const player = new window.Plyr(video, {
             controls: ['play', 'progress', 'current-time', 'mute', 'volume', 'fullscreen'],
-            autoplay: true,
+            autoplay: false,
             muted: true,
         });
+        player._initialized = false;
         players.push(player);
         player.on('ready', () => {
             if (window.Hls.isSupported()) {
@@ -221,9 +235,33 @@
             } else if (player.media.canPlayType('application/vnd.apple.mpegurl')) {
                 player.media.src = url;
             }
+            player._initialized = true;
         });
     });
+
+    // Only play a card's stream while its card is actually visible — the
+    // table/cards toggle just sets display:none on the grid, it doesn't
+    // remove these <video> elements, so without this they'd keep decoding
+    // and playing audio in the background after switching to table view.
+    const isVisible = (el) => el && el.offsetParent !== null;
+
+    const observer = new IntersectionObserver((entries) => {
+        entries.forEach((entry) => {
+            const video = entry.target;
+            const player = players.find((p) => p.media === video);
+            if (!player || !player._initialized) return;
+            if (entry.isIntersecting && isVisible(video)) {
+                player.play().catch(() => {});
+            } else {
+                player.pause();
+            }
+        });
+    }, { threshold: 0.25 });
+
+    document.querySelectorAll('video[data-hls-url]').forEach((video) => observer.observe(video));
+
     window.addEventListener('beforeunload', () => {
+        observer.disconnect();
         players.forEach(p => {
             if (p._hls) try { p._hls.destroy(); } catch (e) {}
             try { p.destroy(); } catch (e) {}

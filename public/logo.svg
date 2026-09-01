@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Cloudstream">
+    <title>Cloudstream</title>
+    <defs>
+        <linearGradient id="cs-bg" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="#1e1b4b"/>
+            <stop offset="100%" stop-color="#0c0a2e"/>
+        </linearGradient>
+        <linearGradient id="cs-cloud" x1="40" y1="30" x2="220" y2="200" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stop-color="#818cf8"/>
+            <stop offset="50%" stop-color="#3b82f6"/>
+            <stop offset="100%" stop-color="#06b6d4"/>
+        </linearGradient>
+        <linearGradient id="cs-play" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="#fef3c7"/>
+            <stop offset="50%" stop-color="#f472b6"/>
+            <stop offset="100%" stop-color="#a855f7"/>
+        </linearGradient>
+        <radialGradient id="cs-glow" cx="0.5" cy="0.5" r="0.5">
+            <stop offset="0%" stop-color="#22d3ee" stop-opacity="0.35"/>
+            <stop offset="100%" stop-color="#22d3ee" stop-opacity="0"/>
+        </radialGradient>
+    </defs>
+
+    <rect width="256" height="256" rx="56" fill="url(#cs-bg)"/>
+
+    <ellipse cx="128" cy="135" rx="120" ry="68" fill="url(#cs-glow)"/>
+
+    <g fill="none" stroke-linecap="round">
+        <path d="M180 60 a18 18 0 0 1 0 36" stroke="#22d3ee" stroke-width="10" opacity="0.95"/>
+        <path d="M198 42 a38 38 0 0 1 0 76" stroke="#a855f7" stroke-width="9" opacity="0.55"/>
+    </g>
+
+    <path d="M80 168c-26.4 0-48-20.4-48-45.6 0-22.8 16.8-41.6 38.8-45.2C77.2 48 101.6 28 130.8 28c31.2 0 56.8 23.2 60 53.2 0.8 0 1.6 0 2.4 0 24.8 0 44.8 19.2 44.8 42.8s-20 42.8-44.8 42.8H80z"
+          fill="url(#cs-cloud)"/>
+
+    <path d="M50 130c2-22 22-40 44-42"
+          fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round" opacity="0.45"/>
+
+    <path d="M112 84L112 156L184 120Z"
+          fill="url(#cs-play)" stroke="#ffffff" stroke-width="6" stroke-linejoin="round"/>
+</svg>

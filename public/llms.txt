@@ -1,0 +1,26 @@
+# Cloudstream — llms.txt
+# Servicio de señal de TV en vivo por Internet en Colombia para canales de TV, emisoras, iglesias y productoras.
+# Empresa: Media Clouding SAS, Bogotá, Colombia.
+# Contacto: +57 312 408 2557 · contacto@cloudstream.mediaserver.com.co
+
+- https://cloudstream.mediaserver.com.co/: Señal de TV en vivo por Internet en Colombia. Streaming 24/7, programador de contenido, cuñas publicitarias, logo, datacenter americano con uptime 99% y restream a Facebook, YouTube y TikTok. Planes desde $75.000/mes.
+- https://cloudstream.mediaserver.com.co/streaming-para-iglesias-colombia: Streaming para iglesias en Colombia: misas, cultos y eventos especiales 24/7. Cobertura multi-sede, programación de cultos y donación en línea.
+- https://cloudstream.mediaserver.com.co/streaming-para-emisoras-de-radio-online: Streaming para emisoras de radio online: convierte tu emisora en un canal de TV por Internet. Baja latencia, apps móviles, monetización con cuñas.
+- https://cloudstream.mediaserver.com.co/streaming-para-canales-de-tv-regionales: Streaming para canales de TV regionales en Colombia: señal HD, cobertura nacional, compatibilidad con cableoperadores y programador de contenido.
+- https://cloudstream.mediaserver.com.co/streaming-para-universidades-y-educacion: Streaming para universidades y educación: clases híbridas, grabación automática, protección con login e integración con LMS.
+- https://cloudstream.mediaserver.com.co/streaming-para-productoras-de-contenido: Streaming para productoras de contenido: plataforma OTT propia con multipantalla, monetización y branding personalizado.
+- https://cloudstream.mediaserver.com.co/restream-facebook-youtube-tiktok: Restream simultáneo a Facebook Live, YouTube Live y TikTok Live. Hasta 4 destinos RTMP personalizados con failover y monitoreo desde panel.
+- https://cloudstream.mediaserver.com.co/servidor-rtmp-colombia: Servidor RTMP en Colombia con ingest desde OBS, vMix y Wirecast, redundancia y bitrate configurable. Planes desde $75.000/mes.
+- https://cloudstream.mediaserver.com.co/preguntas-frecuentes: Preguntas frecuentes sobre streaming de TV en Colombia: planes, precios, RTMP/HLS, restream, programador y soporte.
+- https://cloudstream.mediaserver.com.co/sobre-nosotros: Sobre nosotros: Media Clouding SAS, empresa colombiana detrás de Cloudstream. NIT, datacenter americano y datos de contacto.
+- https://cloudstream.mediaserver.com.co/blog: Blog de Cloudstream: guías y comparativas sobre streaming de TV en Colombia, RTMP, HLS, OBS, restream y casos de uso.
+- https://cloudstream.mediaserver.com.co/blog/cuanto-cuesta-transmitir-tv-internet: Cuánto cuesta transmitir un canal de TV en vivo por Internet en Colombia (2026): desde OBS gratis hasta plataformas profesionales.
+- https://cloudstream.mediaserver.com.co/blog/como-transmitir-canal-tv-internet: Cómo transmitir un canal de TV por Internet en Colombia — guía paso a paso 2026.
+- https://cloudstream.mediaserver.com.co/blog/que-es-rtmp-hls: Qué es RTMP y HLS: protocolos de streaming de TV explicados para principiantes.
+- https://cloudstream.mediaserver.com.co/blog/alternativas-a-obs-para-transmitir-24-7: 5 alternativas a OBS para transmitir tu canal 24/7 sin tener un equipo encendido.
+- https://cloudstream.mediaserver.com.co/blog/como-elegir-servidor-de-streaming-en-colombia: 7 criterios para elegir un servidor de streaming en Colombia.
+- https://cloudstream.mediaserver.com.co/blog/streaming-para-iglesias-como-transmitir-misas-y-eventos-en-vivo: Streaming para iglesias: cómo transmitir misas y eventos en vivo por Internet.
+- https://cloudstream.mediaserver.com.co/blog/como-verificar-que-tu-pauta-publicitaria-se-emitio-en-tv: Cómo verificar que tu pauta publicitaria realmente se emitió en TV: reportes del programador.
+- https://cloudstream.mediaserver.com.co/blog/rtmp-vs-hls-vs-srt-diferencias: RTMP vs HLS vs SRT: diferencias técnicas y cuándo conviene cada protocolo.
+- https://cloudstream.mediaserver.com.co/blog/casos-de-uso-emisoras-colombianas-24-7: Casos de uso: cómo emisoras colombianas pasaron de solo audio a video 24/7.
+- https://cloudstream.mediaserver.com.co/blog/como-empezar-a-transmitir-tu-canal-en-5-minutos: Cómo empezar a transmitir tu canal de TV en 5 minutos: checklist express.

@@ -14,11 +14,13 @@
         ['key' => 'channels', 'route' => 'admin.channels', 'label' => 'Canales', 'icon' => 'M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z'],
         ['key' => 'media', 'route' => 'admin.media', 'label' => 'Multimedia', 'icon' => $mediaIcon],
         ['key' => 'scheduler', 'route' => 'admin.scheduler', 'label' => 'Programación', 'icon' => $schedulerIcon],
+        ['key' => 'restream', 'route' => 'admin.restream.index', 'label' => 'Restream', 'icon' => 'M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01M2 8.82a15 15 0 0120 0M5 12.859a10 10 0 0114 0'],
     ] : [
         ['key' => 'dashboard', 'route' => 'client.dashboard', 'label' => 'Inicio', 'icon' => 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6'],
         ['key' => 'channels', 'route' => 'client.channels', 'label' => 'Canales', 'icon' => 'M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z'],
         ['key' => 'media', 'route' => 'client.media', 'label' => 'Multimedia', 'icon' => $mediaIcon],
         ['key' => 'scheduler', 'route' => 'client.scheduler', 'label' => 'Programación', 'icon' => $schedulerIcon],
+        ['key' => 'restream', 'route' => 'client.restream.index', 'label' => 'Restream', 'icon' => 'M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01M2 8.82a15 15 0 0120 0M5 12.859a10 10 0 0114 0'],
     ];
 
     $themes = [
@@ -27,6 +29,7 @@
         'channels'  => ['accent_hex' => '#34d399'],
         'media'     => ['accent_hex' => '#fbbf24'],
         'scheduler' => ['accent_hex' => '#2dd4bf'],
+        'restream'  => ['accent_hex' => '#fb7185'],
     ];
     $theme = $themes[$active] ?? $themes['dashboard'];
     $themeAccent = $theme['accent_hex'];

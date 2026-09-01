@@ -10,3 +10,5 @@ Artisan::command('inspire', function () {
 })->purpose('Display an inspiring quote');
 
 Schedule::job(PurgeSoftDeletedMedia::class)->daily()->at('03:00')->name('purge-soft-deleted-media');
+
+Schedule::command('restream:launch-scheduled')->everyMinute()->name('restream-launch-scheduled');

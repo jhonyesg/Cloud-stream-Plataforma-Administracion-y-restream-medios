@@ -1,2 +1,9 @@
 User-agent: *
-Disallow:
+Allow: /
+Disallow: /admin
+Disallow: /client
+Disallow: /profile
+Disallow: /login
+Disallow: /register
+
+Sitemap: https://cloudstream.mediaserver.com.co/sitemap.xml

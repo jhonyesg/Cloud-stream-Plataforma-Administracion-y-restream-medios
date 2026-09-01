@@ -26,6 +26,23 @@ class ProfileUpdateRequest extends FormRequest
                 'max:255',
                 Rule::unique(User::class)->ignore($this->user()->id),
             ],
+            'password' => ['sometimes', 'required', 'prohibited'],
+            'password_confirmation' => ['sometimes', 'required', 'prohibited'],
+            'current_password' => ['sometimes', 'required', 'prohibited'],
+        ];
+    }
+
+    public function messages(): array
+    {
+        $msg = 'Para cambiar tu contraseña usa el formulario "Cambiar contraseña" del menú superior.';
+
+        return [
+            'password.required' => $msg,
+            'password.prohibited' => $msg,
+            'password_confirmation.required' => $msg,
+            'password_confirmation.prohibited' => $msg,
+            'current_password.required' => $msg,
+            'current_password.prohibited' => $msg,
         ];
     }
 }

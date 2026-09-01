@@ -114,11 +114,30 @@ class LaravelClient:
             print(f"[LaravelClient] heartbeat failed: {e}")
             return False
 
+    def post_restream_heartbeat(self, target_id: str, payload: Dict[str, Any]) -> bool:
+        """Report restream target state to Laravel."""
+        url = f"{self.base_url}/api/internal/restream/{target_id}/heartbeat"
+        try:
+            resp = self.session.post(url, json=payload, timeout=10)
+            resp.raise_for_status()
+            return True
+        except requests.RequestException as e:
+            print(f"[LaravelClient] restream heartbeat failed: {e}")
+            return False
+
     def write_registration(self, channel_id: str, data: Dict[str, Any]) -> None:
         """Write PID/port registration to storage directory."""
         reg_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'storage', 'app', 'emission-daemons')
         os.makedirs(reg_dir, exist_ok=True)
         path = os.path.join(reg_dir, f"{channel_id}.json")
+        with open(path, 'w') as f:
+            json.dump(data, f, indent=2)
+
+    def write_restream_registration(self, target_id: str, data: Dict[str, Any]) -> None:
+        """Write PID registration for a restream daemon to storage directory."""
+        reg_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'storage', 'app', 'restream-daemons')
+        os.makedirs(reg_dir, exist_ok=True)
+        path = os.path.join(reg_dir, f"{target_id}.json")
         with open(path, 'w') as f:
             json.dump(data, f, indent=2)
 

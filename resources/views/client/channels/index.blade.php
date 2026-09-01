@@ -129,15 +129,16 @@
                             </div>
                         </div>
 
-                        {{-- Live preview player (Plyr + HLS.js, autoplay muted) --}}
-                        <div class="bg-black aspect-video relative">
+                        {{-- Live preview player (Plyr + HLS.js, autoplay only when card is in viewport) --}}
+                        <div class="bg-black aspect-video relative" data-live-card>
                             @if($ch->public_hls_url)
                                 <video
                                     id="liveCard-{{ $ch->id }}"
                                     data-hls-url="{{ $ch->public_hls_url }}"
-                                    autoplay
+                                    data-live-video
                                     muted
                                     playsinline
+                                    preload="none"
                                     class="w-full h-full"
                                 ></video>
                                 <div class="absolute top-2 left-2 z-10 flex items-center gap-1.5 px-2 py-1 rounded-md bg-black/70 text-white text-[10px] font-bold uppercase pointer-events-none">
@@ -290,15 +291,21 @@
 (function() {
     if (!window.Plyr || !window.Hls) return;
     const players = [];
-    document.querySelectorAll('video[data-hls-url]').forEach((video) => {
+    const cards = new Map();
+
+    document.querySelectorAll('video[data-live-video]').forEach((video) => {
         const url = video.dataset.hlsUrl;
         if (!url) return;
 
+        const card = video.closest('[data-live-card]') || video.parentElement;
+        cards.set(video, card);
+
         const player = new window.Plyr(video, {
             controls: ['play', 'progress', 'current-time', 'mute', 'volume', 'fullscreen'],
-            autoplay: true,
+            autoplay: false,
             muted: true,
         });
+        player._initialized = false;
         players.push(player);
 
         player.on('ready', () => {
@@ -310,10 +317,30 @@
             } else if (player.media.canPlayType('application/vnd.apple.mpegurl')) {
                 player.media.src = url;
             }
+            player._initialized = true;
         });
     });
+
+    const isVisible = (el) => el && el.offsetParent !== null;
+
+    const observer = new IntersectionObserver((entries) => {
+        entries.forEach((entry) => {
+            const video = entry.target;
+            const player = players.find((p) => p.media === video);
+            if (!player || !player._initialized) return;
+            if (entry.isIntersecting && isVisible(video.closest('[data-live-card]'))) {
+                player.play().catch(() => {});
+            } else {
+                player.pause();
+            }
+        });
+    }, { threshold: 0.25 });
+
+    cards.forEach((_card, video) => observer.observe(video));
+
     window.addEventListener('beforeunload', () => {
-        players.forEach(p => {
+        observer.disconnect();
+        players.forEach((p) => {
             if (p._hls) try { p._hls.destroy(); } catch (e) {}
             try { p.destroy(); } catch (e) {}
         });

@@ -8,6 +8,7 @@ use App\Observers\MediaItemObserver;
 use App\Observers\PlaylistItemObserver;
 use App\Services\EmissionLogRotator;
 use App\Services\MediaserverApiService;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -36,6 +37,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        URL::forceScheme('https');
+
         MediaItem::observe(MediaItemObserver::class);
         PlaylistItem::observe(PlaylistItemObserver::class);
     }

@@ -1,0 +1,19 @@
+[Unit]
+Description=Cloudstream Restream Daemon for target %i
+After=network.target
+
+[Service]
+Type=simple
+User=www
+Group=www
+WorkingDirectory=/www/wwwroot/cloudstream.mediaserver.com.co
+Environment="PYTHONUNBUFFERED=1"
+ExecStart=/usr/bin/python3 /www/wwwroot/cloudstream.mediaserver.com.co/restream_daemon/main.py --target-id=%i
+ExecStop=/bin/kill -TERM $MAINPID
+Restart=on-failure
+RestartSec=5
+StandardOutput=append:/var/log/cloudstream-restream/%i.log
+StandardError=append:/var/log/cloudstream-restream/%i.log
+
+[Install]
+WantedBy=multi-user.target
