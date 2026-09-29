@@ -140,8 +140,20 @@
                     const byId = Object.fromEntries(this.targets.map((t) => [t.id, t]));
                     this.targets = freshTargets.map((nt) => {
                         const old = byId[nt.id];
-                        return old ? { ...nt, _showLog: old._showLog, _logLines: old._logLines, _logInterval: old._logInterval, _latestStats: old._latestStats, _showCreds: old._showCreds, _streamKey: old._streamKey, _fullPushUrl: old._fullPushUrl, _sourceUrl: old._sourceUrl, _ffmpegCommand: old._ffmpegCommand } : nt;
+                        const merged = old ? { ...nt, _showLog: old._showLog, _logLines: old._logLines, _logInterval: old._logInterval, _latestStats: old._latestStats, _showCreds: old._showCreds, _streamKey: old._streamKey, _fullPushUrl: old._fullPushUrl, _sourceUrl: old._sourceUrl, _ffmpegCommand: old._ffmpegCommand } : nt;
+                        merged._effectiveStatus = nt.effective_status || merged.status || 'idle';
+                        return merged;
                     });
+                    // Mirror the targets list into the live banner.
+                    window.__restreamBannerTargets = this.targets.map((t) => ({
+                        id: t.id,
+                        platform: t.platform,
+                        name: t.name,
+                        effective_status: t._effectiveStatus,
+                        next_ends_at: t.next_ends_at || null,
+                        share_url: t.share_url || null,
+                    }));
+                    window.dispatchEvent(new CustomEvent('restream-banner-targets-updated'));
                 }
             },
             openLog(t) {
@@ -207,6 +219,7 @@
                 No hay canales con owner asignado. Crea un owner en <a class="text-rose-600 hover:underline" href="/admin/channels">/admin/channels</a> y habilita Restream desde la edición del canal antes de configurar destinos.
             </div>
         @else
+            <x-restream-live-banner />
             <div class="bg-white rounded-lg ring-1 ring-gray-200 shadow-sm p-4 mb-5">
                 <div class="flex flex-wrap items-end gap-3">
                     <div class="flex-1 min-w-[200px]">

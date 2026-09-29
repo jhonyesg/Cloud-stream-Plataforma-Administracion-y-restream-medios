@@ -155,26 +155,22 @@
                     this.targets = freshTargets.map((nt) => {
                         const old = byId[nt.id];
                         const merged = old ? { ...nt, _showLog: old._showLog, _logLines: old._logLines, _logInterval: old._logInterval, _latestStats: old._latestStats, _showCreds: old._showCreds, _streamKey: old._streamKey, _fullPushUrl: old._fullPushUrl, _sourceUrl: old._sourceUrl, _ffmpegCommand: old._ffmpegCommand } : nt;
-                        // Effective status: stored status counts only if the
-                        // heartbeat is fresh (<= 15s old). Otherwise we
-                        // display 'Sin señal' so the operator never sees
-                        // 'Activo' for a target whose daemon is actually dead.
-                        const hb = merged.last_heartbeat_at ? new Date(merged.last_heartbeat_at).getTime() : 0;
-                        const hbFresh = hb && (now - hb) < 15000;
-                        const pid = merged.pipeline_pid;
-                        const daemonRunning = pid && (now - pid) < 600000; // PID exists and was set < 10 min ago (heuristic for current session)
-                        if ((merged.status === 'live' || merged.status === 'starting') && !hbFresh) {
-                            merged._effectiveStatus = 'stale';
-                        } else if (hbFresh && daemonRunning) {
-                            // Daemon está vivo y reportando heartbeat → está en vivo,
-                            // aunque el campo status de la BD diga idle (típico
-                            // cuando el orquestador detuvo/reinició al daemon).
-                            merged._effectiveStatus = 'live';
-                        } else {
-                            merged._effectiveStatus = merged.status || 'idle';
-                        }
+                        // The backend now computes effective_status via RestreamStatusResolver
+                        // (heartbeat + YouTube lifecycle + pipeline state). Trust that value
+                        // instead of recomputing in Alpine.
+                        merged._effectiveStatus = nt.effective_status || merged.status || 'idle';
                         return merged;
                     });
+                    // Mirror the targets list into the live banner so it doesn't need its own fetch.
+                    window.__restreamBannerTargets = this.targets.map((t) => ({
+                        id: t.id,
+                        platform: t.platform,
+                        name: t.name,
+                        effective_status: t._effectiveStatus,
+                        next_ends_at: t.next_ends_at || null,
+                        share_url: t.share_url || null,
+                    }));
+                    window.dispatchEvent(new CustomEvent('restream-banner-targets-updated'));
                 }
             },
             openLog(t) {
@@ -240,6 +236,7 @@
                 No tienes canales asignados. Pide al administrador que te asigne uno para usar Restream.
             </div>
         @else
+            <x-restream-live-banner />
             <div class="bg-white rounded-lg ring-1 ring-gray-200 shadow-sm p-4 mb-5">
                 <div class="flex flex-wrap items-end gap-3">
                     <div class="flex-1 min-w-[200px]">
@@ -326,17 +323,41 @@
                                 <td class="px-6 py-3 text-sm text-gray-700" x-text="t.name"></td>
                                 <td class="px-6 py-3 text-sm">
                                     <span class="inline-flex items-center gap-1.5">
-                                        {{-- Effective status: stored status only counts if heartbeat is fresh. A target with status=live but stale heartbeat is shown as "Sin señal". --}}
+                                        {{-- Effective status comes from App\Services\Restream\RestreamStatusResolver in the JSON payload --}}
                                         <template x-if="t._effectiveStatus === 'live'">
                                             <span class="inline-flex items-center gap-1.5 px-2 py-0.5 text-xs rounded bg-emerald-100 text-emerald-800">
                                                 <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                                                Activo
+                                                En vivo en YouTube
                                             </span>
                                         </template>
                                         <template x-if="t._effectiveStatus === 'starting'">
                                             <span class="inline-flex items-center gap-1.5 px-2 py-0.5 text-xs rounded bg-amber-100 text-amber-800">
                                                 <span class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
                                                 Iniciando
+                                            </span>
+                                        </template>
+                                        <template x-if="t._effectiveStatus === 'yt-test-starting'">
+                                            <span class="inline-flex items-center gap-1.5 px-2 py-0.5 text-xs rounded bg-amber-100 text-amber-800" title="YouTube está en estado testStarting — espera unos segundos">
+                                                <span class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+                                                YouTube iniciando
+                                            </span>
+                                        </template>
+                                        <template x-if="t._effectiveStatus === 'yt-no-data'">
+                                            <span class="inline-flex items-center gap-1.5 px-2 py-0.5 text-xs rounded bg-amber-100 text-amber-800" title="El daemon emite pero YouTube todavía no recibe suficientes datos para marcarlo como 'live'">
+                                                <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                                                Daemon activo, YouTube sin datos
+                                            </span>
+                                        </template>
+                                        <template x-if="t._effectiveStatus === 'yt-complete'">
+                                            <span class="inline-flex items-center gap-1.5 px-2 py-0.5 text-xs rounded bg-slate-200 text-slate-800" :title="t.platform_broadcast_lifecycle_error || 'YouTube marcó el broadcast como complete'">
+                                                <span class="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
+                                                YouTube dice "completado"
+                                            </span>
+                                        </template>
+                                        <template x-if="t._effectiveStatus === 'yt-revoked'">
+                                            <span class="inline-flex items-center gap-1.5 px-2 py-0.5 text-xs rounded bg-red-100 text-red-800">
+                                                <span class="w-1.5 h-1.5 rounded-full bg-red-500"></span>
+                                                YouTube dice "revocado"
                                             </span>
                                         </template>
                                         <template x-if="t._effectiveStatus === 'error'">
@@ -351,7 +372,7 @@
                                                 Sin señal
                                             </span>
                                         </template>
-                                        <template x-if="!['live','starting','error','stale'].includes(t._effectiveStatus)">
+                                        <template x-if="!['live','starting','yt-test-starting','yt-no-data','yt-complete','yt-revoked','error','stale'].includes(t._effectiveStatus)">
                                             <span class="inline-flex items-center gap-1.5 px-2 py-0.5 text-xs rounded bg-gray-100 text-gray-700">
                                                 <span class="w-1.5 h-1.5 rounded-full bg-gray-400"></span>
                                                 Inactivo

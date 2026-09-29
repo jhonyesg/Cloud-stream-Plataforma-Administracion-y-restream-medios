@@ -5,11 +5,16 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\AuditLog;
 use App\Models\Channel;
+use App\Models\RestreamPlatformAccount;
 use App\Models\RestreamTarget;
 use App\Models\User;
+use App\Services\Restream\Platform\FacebookBroadcastService;
+use App\Services\Restream\Platform\RestreamPlatformAccountException;
+use App\Services\Restream\Platform\YoutubeBroadcastService;
 use App\Services\Restream\RestreamOrchestrator;
 use App\Services\Restream\RestreamQuotaException;
 use App\Services\Restream\RestreamQuotaGuard;
+use App\Services\Restream\RestreamTargetJsonPresenter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -20,6 +25,9 @@ class RestreamTargetController extends Controller
     public function __construct(
         private readonly RestreamOrchestrator $orchestrator,
         private readonly RestreamQuotaGuard $guard,
+        private readonly YoutubeBroadcastService $youtube,
+        private readonly FacebookBroadcastService $facebook,
+        private readonly RestreamTargetJsonPresenter $presenter,
     ) {
     }
 
@@ -58,27 +66,48 @@ class RestreamTargetController extends Controller
         }
         $remainingSlots = max(0, $maxOutputs - $usedOutputs);
 
+        $connectedAccounts = RestreamPlatformAccount::with(['user:id,display_name,username,email'])
+            ->orderBy('user_id')
+            ->orderBy('platform')
+            ->get()
+            ->map(fn (RestreamPlatformAccount $a) => [
+                'id' => $a->id,
+                'platform' => $a->platform,
+                'platform_label' => $a->platformLabel(),
+                'display_name' => $a->display_name,
+                'owner_id' => optional($a->user)->id,
+                'owner_display_name' => optional($a->user)->display_name
+                    ?? optional($a->user)->username
+                    ?? optional($a->user)->email,
+                'connected_at' => $a->created_at,
+                'token_expires_at' => $a->token_expires_at,
+                'needs_reconnect' => $a->needsReconnect(),
+            ])
+            ->values();
+
+        $clients = User::query()
+            ->where('role', 'client')
+            ->orderBy('display_name')
+            ->orderBy('username')
+            ->orderBy('email')
+            ->get(['id', 'display_name', 'username', 'email'])
+            ->map(fn (User $u) => [
+                'id' => $u->id,
+                'display_name' => $u->display_name ?: $u->username ?: $u->email,
+            ])
+            ->values();
+
+        $mediaImagesJson = $this->buildMediaImagesJson($owner?->id);
+
         $targetsArray = collect($targets->getCollection()->map(function ($t) {
-            $status = $t->status;
-            if ($status === RestreamTarget::STATUS_ACTIVE && ! $t->isHeartbeatFresh()) {
-                $status = RestreamTarget::STATUS_ERROR;
-            }
-            return [
-                'id' => $t->id,
-                'channel_id' => $t->channel_id,
-                'channel' => ['display_name' => optional($t->channel)->display_name],
-                'user' => ['display_name' => optional($t->user)->name],
-                'platform' => $t->platform,
-                'name' => $t->name,
-                'destination_url' => $t->destination_url,
-                'source_url' => $t->source_url,
-                'enabled' => (bool) $t->enabled,
-                'status' => $status,
-                'pipeline_pid' => $t->pipeline_pid,
-                'last_started_at' => $t->last_started_at ? $t->last_started_at->format('Y-m-d H:i:s') : null,
-                'last_heartbeat_at' => $t->last_heartbeat_at ? $t->last_heartbeat_at->format('Y-m-d H:i:s') : null,
-                'last_error' => $t->last_error,
-            ];
+            $row = $this->presenter->present($t, withChannel: true, withUser: true);
+            $row['last_auto_start_at'] = AuditLog::where('action', 'auto_start.restream_target')
+                ->where('entity_type', 'restream_target')->where('entity_id', $t->id)
+                ->orderByDesc('id')->value('at')?->format('Y-m-d H:i:s');
+            $row['last_auto_stop_at'] = AuditLog::where('action', 'auto_stop.restream_target')
+                ->where('entity_type', 'restream_target')->where('entity_id', $t->id)
+                ->orderByDesc('id')->value('at')?->format('Y-m-d H:i:s');
+            return $row;
         }))->values();
 
         if ($request->wantsJson()) {
@@ -91,6 +120,10 @@ class RestreamTargetController extends Controller
             ]);
         }
 
+        $currentChannelJson = $currentChannel
+            ? json_encode(['id' => $currentChannel->id, 'display_name' => $currentChannel->display_name], JSON_UNESCAPED_UNICODE)
+            : 'null';
+
         return view('admin.restream.index', [
             'targets' => $targets,
             'targetsJson' => $targetsArray->toJson(),
@@ -98,11 +131,44 @@ class RestreamTargetController extends Controller
             'channelsJson' => $channels->map(fn($c) => ['id' => $c->id, 'display_name' => $c->display_name])->values()->toJson(),
             'currentChannel' => $currentChannel,
             'currentChannelId' => $currentChannelId,
+            'currentChannelJson' => $currentChannelJson,
             'filters' => $request->only(['platform', 'status']),
             'usedOutputs' => $usedOutputs,
             'maxOutputs' => $maxOutputs,
             'remainingSlots' => $remainingSlots,
+            'connectedAccountsJson' => $connectedAccounts->toJson(),
+            'clientsJson' => $clients->toJson(),
+            'mediaImagesJson' => $mediaImagesJson,
         ]);
+    }
+
+    protected function buildMediaImagesJson(?string $ownerId): string
+    {
+        if (! $ownerId) {
+            return '[]';
+        }
+        $channelIds = \App\Models\User::find($ownerId)?->effectiveChannelIds() ?? [];
+        if (empty($channelIds)) {
+            return '[]';
+        }
+
+        $images = \App\Models\MediaItem::whereIn('channel_id', $channelIds)
+            ->where('kind', 'image')
+            ->where('status', 'ready')
+            ->orderBy('created_at', 'desc')
+            ->limit(60)
+            ->get(['id', 'filename', 'channel_id', 'width', 'height', 'mime_type', 'created_at']);
+
+        return $images->map(fn (\App\Models\MediaItem $m) => [
+            'id' => $m->id,
+            'filename' => $m->filename,
+            'thumb_url' => $m->thumbUrl(),
+            'play_url' => $m->playUrl(),
+            'width' => $m->width,
+            'height' => $m->height,
+            'channel_id' => $m->channel_id,
+            'mime_type' => $m->mime_type,
+        ])->values()->toJson(JSON_UNESCAPED_UNICODE);
     }
 
     public function store(Request $request, Channel $channel): JsonResponse
@@ -117,11 +183,20 @@ class RestreamTargetController extends Controller
         $data = $request->validate([
             'platform' => ['required', 'string', 'in:facebook,tiktok,youtube,custom'],
             'name' => ['required', 'string', 'max:80'],
-            'destination_url' => ['required', 'string', 'max:2048', 'regex:/^rtmps?:\/\/.+/i'],
-            'stream_key' => ['required', 'string', 'min:2', 'max:500'],
+            'destination_url' => ['sometimes', 'nullable', 'string', 'max:2048', 'regex:/^rtmps?:\/\/.+/i'],
+            'stream_key' => ['sometimes', 'nullable', 'string', 'min:2', 'max:500'],
             'source_url' => ['sometimes', 'nullable', 'string', 'max:2048', 'regex:#^(https?|rtmps?|rtsps?)://.+$#i'],
             'enabled' => ['sometimes', 'boolean'],
+            'platform_account_id' => ['sometimes', 'nullable', 'uuid'],
+            'platform_privacy' => ['sometimes', 'nullable', 'in:public,unlisted,private'],
+            'keep_recording' => ['sometimes', 'nullable', 'boolean'],
+            'title' => ['sometimes', 'nullable', 'string', 'max:150'],
+            'description' => ['sometimes', 'nullable', 'string', 'max:5000'],
+            'thumbnail_media_id' => ['sometimes', 'nullable', 'uuid', 'exists:media_items,id'],
+            'thumbnail' => ['sometimes', 'nullable', 'image', 'max:5120'],
         ]);
+
+        $platformAccount = $this->resolvePlatformAccount($data['platform_account_id'] ?? null, $data['platform']);
 
         $admin = $request->user();
         $enabled = (bool) ($data['enabled'] ?? false);
@@ -131,21 +206,39 @@ class RestreamTargetController extends Controller
                 $this->guard->assertCanEnable($owner, $channel);
             }
 
-            $target = DB::transaction(function () use ($owner, $channel, $admin, $data, $enabled) {
+            $target = DB::transaction(function () use ($owner, $channel, $admin, $data, $enabled, $platformAccount, $request) {
                 return RestreamTarget::create([
                     'user_id' => $owner->id,
                     'channel_id' => $channel->id,
                     'platform' => $data['platform'],
                     'name' => $data['name'],
-                    'destination_url' => $data['destination_url'],
-                    'stream_key' => $data['stream_key'],
+                    'destination_url' => $data['destination_url'] ?? null,
+                    'stream_key' => $data['stream_key'] ?? null,
                     'source_url' => $data['source_url'] ?? null,
                     'enabled' => $enabled,
                     'status' => RestreamTarget::STATUS_IDLE,
                     'created_by' => $admin?->id,
+                    'platform_account_id' => $platformAccount?->id,
+                    'title' => $data['title'] ?? null,
+                    'platform_privacy' => $data['platform_privacy'] ?? null,
+                    'keep_recording' => $data['keep_recording'] ?? true,
+                    'description' => $data['description'] ?? null,
+                    'thumbnail_media_id' => $data['thumbnail_media_id'] ?? null,
+                    'thumbnail_path' => $request->hasFile('thumbnail') && empty($data['thumbnail_media_id'])
+                        ? $request->file('thumbnail')->store('restream-thumbnails', 'public')
+                        : null,
                 ]);
             });
+
+            if ($platformAccount) {
+                $this->createPlatformBroadcast($target);
+            }
         } catch (RestreamQuotaException $e) {
+            throw ValidationException::withMessages(['restream' => $e->getMessage()]);
+        } catch (RestreamPlatformAccountException $e) {
+            if (isset($target)) {
+                $target->delete();
+            }
             throw ValidationException::withMessages(['restream' => $e->getMessage()]);
         }
 
@@ -188,10 +281,20 @@ class RestreamTargetController extends Controller
             'source_url' => ['sometimes', 'nullable', 'string', 'max:2048', 'regex:#^(https?|rtmps?|rtsps?)://.+$#i'],
             'enabled' => ['sometimes', 'boolean'],
             'status' => ['sometimes', 'in:idle,starting,live,error'],
+            'platform_account_id' => ['sometimes', 'nullable', 'uuid'],
+            'platform_privacy' => ['sometimes', 'nullable', 'in:public,unlisted,private'],
+            'keep_recording' => ['sometimes', 'nullable', 'boolean'],
+            'title' => ['sometimes', 'nullable', 'string', 'max:150'],
+            'description' => ['sometimes', 'nullable', 'string', 'max:5000'],
+            'thumbnail_media_id' => ['sometimes', 'nullable', 'uuid', 'exists:media_items,id'],
+            'thumbnail' => ['sometimes', 'nullable', 'image', 'max:5120'],
         ]);
 
         $willEnable = array_key_exists('enabled', $data) ? (bool) $data['enabled'] : (bool) $target->enabled;
         $becomingActive = $willEnable && ! (bool) $target->enabled;
+        $metadataChanged = $target->isPlatformManaged()
+            && (array_key_exists('title', $data) || array_key_exists('description', $data)
+                || array_key_exists('platform_privacy', $data));
 
         $owner = $channel->owner_id ? User::find($channel->owner_id) : null;
 
@@ -202,14 +305,21 @@ class RestreamTargetController extends Controller
 
             $beforeArr = $target->makeHidden('stream_key')->toArray() + ['stream_key_set' => ! empty($target->getRawOriginal('stream_key'))];
 
-            DB::transaction(function () use ($target, $data) {
+            DB::transaction(function () use ($target, $data, $request) {
                 if (array_key_exists('stream_key', $data) && ! empty($data['stream_key'])) {
                     $target->stream_key = $data['stream_key'];
                 }
                 unset($data['stream_key']);
+                if ($request->hasFile('thumbnail')) {
+                    $data['thumbnail_path'] = $request->file('thumbnail')->store('restream-thumbnails', 'public');
+                }
                 $target->fill($data);
                 $target->save();
             });
+
+            if ($metadataChanged) {
+                $this->updatePlatformBroadcast($target);
+            }
 
             $afterArr = $target->fresh()->makeHidden('stream_key')->toArray() + ['stream_key_set' => ! empty($target->getRawOriginal('stream_key'))];
 
@@ -223,9 +333,54 @@ class RestreamTargetController extends Controller
             );
         } catch (RestreamQuotaException $e) {
             throw ValidationException::withMessages(['restream' => $e->getMessage()]);
+        } catch (RestreamPlatformAccountException $e) {
+            throw ValidationException::withMessages(['restream' => $e->getMessage()]);
         }
 
         return response()->json(['message' => 'Destino actualizado.', 'target' => $target->fresh()]);
+    }
+
+    protected function resolvePlatformAccount(?string $platformAccountId, string $platform): ?RestreamPlatformAccount
+    {
+        if (! $platformAccountId) {
+            return null;
+        }
+
+        $account = RestreamPlatformAccount::find($platformAccountId);
+
+        if (! $account) {
+            throw ValidationException::withMessages(['platform_account_id' => 'La cuenta conectada no existe.']);
+        }
+
+        if ($account->platform !== $platform) {
+            throw ValidationException::withMessages(['platform_account_id' => 'La cuenta conectada no corresponde a la plataforma seleccionada.']);
+        }
+
+        return $account;
+    }
+
+    protected function createPlatformBroadcast(RestreamTarget $target): void
+    {
+        $result = match ($target->platform) {
+            RestreamPlatformAccount::PLATFORM_YOUTUBE => $this->youtube->create($target),
+            RestreamPlatformAccount::PLATFORM_FACEBOOK => $this->facebook->create($target),
+            default => throw RestreamPlatformAccountException::broadcastCreationFailed($target->platform, 'Plataforma no soportada para cuentas conectadas.'),
+        };
+
+        $target->forceFill([
+            'destination_url' => $result['destination_url'],
+            'stream_key' => $result['stream_key'],
+            'platform_broadcast_id' => $result['platform_broadcast_id'],
+        ])->save();
+    }
+
+    protected function updatePlatformBroadcast(RestreamTarget $target): void
+    {
+        match ($target->platform) {
+            RestreamPlatformAccount::PLATFORM_YOUTUBE => $this->youtube->update($target),
+            RestreamPlatformAccount::PLATFORM_FACEBOOK => $this->facebook->update($target),
+            default => null,
+        };
     }
 
     public function destroy(Channel $channel, RestreamTarget $target): JsonResponse
@@ -252,7 +407,7 @@ class RestreamTargetController extends Controller
             channelId: $channel->id,
         );
 
-        return response()->json(['message' => 'Destino eliminado.']);
+        return response()->json(['message' => 'Destino archivado (soft-delete). Se puede restaurar desde admin si fue un error.']);
     }
 
     public function start(Channel $channel, RestreamTarget $target): JsonResponse
@@ -397,5 +552,91 @@ class RestreamTargetController extends Controller
             'status' => 'idle',
             'pipeline_pid' => null,
         ]);
+    }
+
+    public function deactivate(Channel $channel, RestreamTarget $target): JsonResponse
+    {
+        abort_unless($target->channel_id === $channel->id, 404, 'Destino no pertenece a este canal.');
+
+        if ($target->pipeline_pid) {
+            try {
+                $this->orchestrator->stop($target);
+            } catch (\Throwable $e) {
+                // best-effort
+            }
+        }
+
+        $before = ['enabled' => (bool) $target->enabled, 'status' => $target->status];
+
+        $target->enabled = false;
+        $target->status = RestreamTarget::STATUS_IDLE;
+        $target->save();
+
+        AuditLog::record(
+            action: 'deactivate.restream_target',
+            entityType: 'restream_target',
+            entityId: $target->id,
+            before: $before,
+            after: ['enabled' => false, 'status' => 'idle'],
+            channelId: $channel->id,
+        );
+
+        return response()->json([
+            'message' => 'Destino inactivado. El slot queda libre.',
+            'target' => $target->fresh(),
+            'enabled' => false,
+            'status' => 'idle',
+        ]);
+    }
+
+    public function restore(Channel $channel, RestreamTarget $target): JsonResponse
+    {
+        abort_unless($target->channel_id === $channel->id, 404, 'Destino no pertenece a este canal.');
+
+        if ($target->trashed()) {
+            $target->restore();
+        }
+
+        AuditLog::record(
+            action: 'restore.restream_target',
+            entityType: 'restream_target',
+            entityId: $target->id,
+            before: ['deleted_at' => $target->deleted_at],
+            after: ['deleted_at' => null],
+            channelId: $channel->id,
+        );
+
+        return response()->json([
+            'message' => 'Destino restaurado.',
+            'target' => $target->fresh(),
+        ]);
+    }
+
+    public function forceDestroy(Channel $channel, RestreamTarget $target): JsonResponse
+    {
+        abort_unless($target->channel_id === $channel->id, 404, 'Destino no pertenece a este canal.');
+
+        if ($target->pipeline_pid) {
+            try {
+                $this->orchestrator->stop($target);
+            } catch (\Throwable $e) {
+                // best-effort
+            }
+        }
+
+        $beforeArr = $target->makeHidden('stream_key')->toArray() + ['stream_key_set' => ! empty($target->getRawOriginal('stream_key'))];
+
+        $target->forceDelete();
+
+        AuditLog::record(
+            action: 'force_delete.restream_target',
+            entityType: 'restream_target',
+            entityId: $target->id,
+            before: $beforeArr,
+            after: null,
+            channelId: $channel->id,
+        );
+
+        return response()->json(['message' => 'Destino eliminado DEFINITIVAMENTE. No se puede recuperar.']);
     }
 }

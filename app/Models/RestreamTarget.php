@@ -6,11 +6,13 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Facades\Crypt;
 
 class RestreamTarget extends Model
 {
-    use HasUuids;
+    use HasUuids, SoftDeletes;
 
     public const PLATFORM_FACEBOOK = 'facebook';
     public const PLATFORM_TIKTOK = 'tiktok';
@@ -55,16 +57,27 @@ class RestreamTarget extends Model
         'title',
         'description',
         'thumbnail_path',
+        'thumbnail_media_id',
         'scheduled_start_at',
+        'scheduled_stop_at',
         'platform_broadcast_id',
+        'platform_privacy',
+        'keep_recording',
+        'platform_broadcast_lifecycle',
+        'platform_broadcast_lifecycle_at',
+        'platform_broadcast_lifecycle_error',
+        'last_youtube_poll_at',
     ];
 
     protected $hidden = ['stream_key'];
+
+    protected $appends = ['effective_status'];
 
     protected function casts(): array
     {
         return [
             'enabled' => 'boolean',
+            'keep_recording' => 'boolean',
             'pipeline_pid' => 'integer',
             'last_started_at' => 'datetime',
             'last_stopped_at' => 'datetime',
@@ -73,7 +86,15 @@ class RestreamTarget extends Model
             'loops_completed' => 'integer',
             'stream_key' => 'encrypted',
             'scheduled_start_at' => 'datetime',
+            'scheduled_stop_at' => 'datetime',
+            'platform_broadcast_lifecycle_at' => 'datetime',
+            'last_youtube_poll_at' => 'datetime',
         ];
+    }
+
+    public function getEffectiveStatusAttribute(): string
+    {
+        return app(\App\Services\Restream\RestreamStatusResolver::class)->resolve($this);
     }
 
     public function user(): BelongsTo
@@ -91,6 +112,22 @@ class RestreamTarget extends Model
         return $this->belongsTo(RestreamPlatformAccount::class, 'platform_account_id');
     }
 
+    public function thumbnailMedia(): BelongsTo
+    {
+        return $this->belongsTo(MediaItem::class, 'thumbnail_media_id');
+    }
+
+    public function thumbnailPreviewUrl(): ?string
+    {
+        if ($media = $this->thumbnailMedia) {
+            return $media->thumbUrl();
+        }
+        if ($this->thumbnail_path && str_starts_with($this->thumbnail_path, '/storage/')) {
+            return $this->thumbnail_path;
+        }
+        return null;
+    }
+
     public function isPlatformManaged(): bool
     {
         return ! empty($this->platform_account_id);
@@ -99,6 +136,16 @@ class RestreamTarget extends Model
     public function createdBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function schedules(): HasMany
+    {
+        return $this->hasMany(RestreamTargetSchedule::class, 'target_id');
+    }
+
+    public function events(): HasMany
+    {
+        return $this->hasMany(RestreamTargetEvent::class, 'target_id');
     }
 
     public function scopeEnabled(Builder $query): Builder
