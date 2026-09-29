@@ -157,13 +157,23 @@ class RestreamTarget extends Model
 
     public function isCurrentlyRunning(): bool
     {
-        if (! $this->pipeline_pid) {
-            return false;
+        // Trust pipeline_pid + posix_kill when present (the strong signal).
+        if ($this->pipeline_pid && function_exists('posix_kill')) {
+            if (@posix_kill((int) $this->pipeline_pid, 0)) {
+                return true;
+            }
         }
-        if (! function_exists('posix_kill')) {
-            return false;
+        // Fallback: a fresh heartbeat + status='live' means a daemon is
+        // actually pushing bytes, even if pipeline_pid was lost (e.g.
+        // operator did UPDATE ... pipeline_pid=NULL by hand, or a previous
+        // stop() ran but the daemon kept running). Without this fallback,
+        // the schedule engine would never call stopTargetAfterWindow() and
+        // the daemon would push indefinitely past ends_at.
+        if ($this->status === 'live' && $this->isHeartbeatFresh(15)) {
+            return true;
         }
-        return @posix_kill((int) $this->pipeline_pid, 0);
+
+        return false;
     }
 
     public function isHeartbeatFresh(int $maxAgeSeconds = 15): bool

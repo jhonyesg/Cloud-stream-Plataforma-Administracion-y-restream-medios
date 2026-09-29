@@ -204,6 +204,13 @@ class TargetDaemon:
 
                 # Auto-restart when the ffmpeg child exits
                 if state in ('stopped', 'error'):
+                    # Don't respawn during shutdown. The orchestrator just
+                    # sent SIGTERM (or the operator hit "Detener"); spawning
+                    # a fresh ffmpeg here would leave an orphan that keeps
+                    # pushing to YouTube after the daemon itself exits.
+                    if self._stop_event.is_set():
+                        self._log(f"[DAEMON] FFmpeg child exited during shutdown (state={state}); not respawning.")
+                        return
                     self._log(f"[DAEMON] FFmpeg child exited (state={state}). Restarting...")
                     if stats.get('error_message'):
                         self._log(f"[DAEMON] Child error: {stats['error_message']}")
