@@ -12,23 +12,35 @@ The system SHALL persist targets in a `restream_targets` table with the followin
 - `channel_id` (uuid, FK to `channels.id`)
 - `platform` (enum: `facebook`, `tiktok`, `youtube`, `custom`)
 - `name` (string, ≤ 80 chars, required, user-defined label)
-- `destination_url` (string, required, validated as URL)
-- `stream_key` (string, encrypted at rest, never returned in plaintext except on create)
+- `title` (string, nullable, ≤ 150) — broadcast title used by platform-managed targets
+- `description` (text, nullable, ≤ 5000) — broadcast description
+- `thumbnail_path` (string, nullable) / `thumbnail_media_id` (uuid, nullable, FK to `media_items.id`)
+- `scheduled_start_at` (timestamptz, nullable) — programmed start
+- `scheduled_stop_at` (timestamptz, nullable) — programmed stop; MUST be after `scheduled_start_at` when both present
+- `destination_url` (string, nullable, validated as RTMP URL — nullable for platform-managed targets)
+- `stream_key` (string, nullable, encrypted at rest, never returned in plaintext except on show)
 - `source_url` (text, nullable) — input URL that FFmpeg consumes. If NULL, the engine falls back to `channel.public_hls_url` at start time.
-- `pipeline_pid` (integer, nullable) — live OS PID of the FFmpeg process managed by the supervisor; cleared on stop.
+- `pipeline_pid` (integer, nullable) — live OS PID of the FFmpeg process managed by the orchestrator/daemon; cleared on stop.
+- `platform_account_id` (uuid, nullable, FK to `restream_platform_accounts.id`) — presence marks the target as platform-managed
+- `platform_broadcast_id` (string, nullable) — remote broadcast id
 - `enabled` (boolean, default `false`)
-- `status` (enum: `idle`, `active`, `error`, default `idle`)
+- `status` (enum: `idle`, `starting`, `live`, `error`, default `idle`)
 - `last_error` (text, nullable)
-- `last_failed_at` (timestamp, nullable) — set when the supervisor marks the target `error` to enforce the 5-minute restart cool-down.
+- `last_failed_at` (timestamp, nullable) — set when the target is marked `error` to enforce the 5-minute restart cool-down.
 - `last_started_at` (timestamp, nullable)
 - `last_stopped_at` (timestamp, nullable)
+- `last_heartbeat_at` (timestamp, nullable)
+- `loops_completed` (integer, default 0)
 - `created_by` (uuid, FK to `users.id`)
+- `deleted_at` (timestamp, nullable) — soft deletes
 - timestamps (`created_at`, `updated_at`)
 
-A unique compound constraint SHALL exist on `(user_id, channel_id, platform)` to prevent two targets with the exact same triple for the same user.
+A **partial** unique constraint SHALL exist on `(user_id, channel_id, platform) WHERE deleted_at IS NULL`, so soft-deleted targets release the triple and a new target with the same triple can be created. On `store`, the controller SHALL pre-check duplicates (including soft-deleted rows) and respond 422 with an actionable message instead of letting the DB raise a 500.
+
+The scheduler SHALL find candidates via partial indexes: `(scheduled_start_at) WHERE enabled = false` and `(scheduled_stop_at) WHERE scheduled_stop_at IS NOT NULL`.
 
 #### Scenario: Required fields are enforced
-- **WHEN** a user submits a target without `destination_url`
+- **WHEN** a user submits a manual target without `destination_url`
 - **THEN** the server responds 422 with a validation error on `destination_url`
 
 #### Scenario: Platform enum is enforced
@@ -36,16 +48,28 @@ A unique compound constraint SHALL exist on `(user_id, channel_id, platform)` to
 - **THEN** the server responds 422 (only `facebook`, `tiktok`, `youtube`, `custom` are allowed)
 
 #### Scenario: Duplicate triple is rejected
-- **WHEN** a user already has a target with `(channel_id=X, platform=facebook)` and submits another with the same triple
+- **WHEN** a user already has a **live** target with `(channel_id=X, platform=facebook)` and submits another with the same triple
 - **THEN** the server responds 422 indicating a duplicate target
 
+#### Scenario: Soft-deleted target releases the triple
+- **WHEN** a user's target `(channel_id=X, platform=youtube)` is soft-deleted and they create a new one with the same triple
+- **THEN** the insert succeeds (no 500, no unique violation)
+
 #### Scenario: source_url is optional and nullable
-- **WHEN** a user submits a target without `source_url`
-- **THEN** the row is created with `source_url = NULL` and the launcher will fall back to `channel.public_hls_url` at start time
+- **WHEN** a platform-managed or manual target is created without `source_url`
+- **THEN** the insert succeeds and `source_url` remains NULL
 
 #### Scenario: Custom source_url is accepted
-- **WHEN** a user submits `source_url = "rtmp://emision.local/app/canal-demo"`
-- **THEN** the row is created and the launcher uses exactly that URL as the FFmpeg `-i` argument
+- **WHEN** a target is created with `source_url = "rtmp://emision.local/app/CHAN"`
+- **THEN** the insert succeeds and the value is persisted verbatim
+
+#### Scenario: Scheduled stop must be after start
+- **WHEN** a target is submitted with `scheduled_start_at` and `scheduled_stop_at` where stop <= start
+- **THEN** the server responds 422 with a validation error on `scheduled_stop_at`
+
+#### Scenario: Legacy status values are normalized
+- **WHEN** a row has `status='active'` (legacy value not in the model enum)
+- **THEN** the normalization migration rewrites it to `status='live'` and the model never returns an unlisted status
 
 ### Requirement: Channel must be accessible by the user
 
@@ -210,4 +234,172 @@ The system SHALL expose `POST /api/internal/restream/{target}/heartbeat` (localh
 #### Scenario: Non-localhost caller is rejected
 - **WHEN** a request to the heartbeat endpoint does not originate from localhost
 - **THEN** the endpoint responds 403
+
+### Requirement: UI de Restream se monta sin errores de Alpine
+
+Las vistas `/client/restream` y `/admin/restream` SHALL montarse en el navegador sin producir errores ni advertencias de Alpine en la consola del navegador relacionados con el payload inicial (`x-data`). Esto requiere que cualquier objeto JSON anidado dentro del atributo `x-data` sea inyectado mediante una cadena pre-codificada en el controlador y renderizada con `{{ … }}` (que aplica `htmlspecialchars`), no con `@json(...)` crudo.
+
+#### Scenario: Acciones de la tabla responden al estado
+
+- **WHEN** un usuario carga la vista con uno o más destinos configurados en el canal de contexto
+- **THEN** los badges de estado (`live`, `starting`, `error`, `idle`) reflejan el valor real de cada destino y los botones "Iniciar", "Detener", "Inactivar", "Archivar", "Eliminar" muestran/ocultan correctamente según `t.status`, `t.enabled` y `t.pipeline_pid`
+
+#### Scenario: Modal de destino se abre con datos correctos
+
+- **WHEN** el usuario hace clic en "Editar" sobre un destino o en "+ Nuevo destino"
+- **THEN** el modal se abre con `channel`, `mode`, `target`, `connectedAccounts` propagados desde el payload inicial de Alpine, y los bindings `x-text="channel ? channel.display_name : '—'"` muestran el nombre del canal
+
+#### Scenario: Conexión de cuenta OAuth renderiza el badge correcto
+
+- **WHEN** el cliente tiene una cuenta de YouTube o Facebook conectada (con o sin `needs_reconnect`)
+- **THEN** la fila correspondiente en "Cuentas conectadas" muestra el badge verde (`border-emerald-300 bg-emerald-50`) o ámbar (`border-amber-300 bg-amber-50`) según `accountFor(platform).needs_reconnect`, y el botón "Conectar"/"Desconectar"/"Reconectar" es el correcto
+
+### Requirement: Acciones destructivas usan el modal de confirmación
+
+Las acciones destructivas de un destino (`remove`, `inactivate`, `forceDestroy`) SHALL abrir el `<x-confirm-modal>` con un payload específico por acción, en lugar de llamar `window.confirm()`. El payload SHALL incluir al menos `title`, `message`, `tone`, `confirmLabel` y (para `forceDestroy`) `requireText`. Las llamadas nativas `window.confirm()` SHALL eliminarse del módulo.
+
+#### Scenario: Archivar abre el modal en tono warning
+- **WHEN** un cliente o admin hace clic en el botón "Archivar" sobre un destino
+- **THEN** se abre el `<x-confirm-modal>` con `title="Archivar destino"`, `message` mencionando que el slot queda libre y se puede restaurar, `tone: 'warning'`, `confirmLabel: 'Sí, archivar'`, `action` apuntando a `destroy` (DELETE) y la fila no se borra hasta que el usuario confirma
+
+#### Scenario: Inactivar abre el modal en tono warning
+- **WHEN** un cliente o admin hace clic en "Inactivar" sobre un destino activo
+- **THEN** se abre el modal con `title="Inactivar destino"`, mensaje explicando que se detiene y libera el slot, `tone: 'warning'`, `confirmLabel: 'Sí, inactivar'`, y el `action` apuntando a `deactivate` (POST)
+
+#### Scenario: Eliminar definitivo exige tipear ELIMINAR
+- **WHEN** un cliente o admin hace clic en "Eliminar" sobre un destino
+- **THEN** se abre el modal en `tone: 'danger'` con `requireText: 'ELIMINAR'`; el botón de acción está deshabilitado hasta que el usuario tipea exactamente `ELIMINAR`. Si el usuario cancela o tipea mal, ninguna request se dispara. Si confirma, se hace DELETE a `forceDestroy` y luego aparece el toast de éxito
+
+#### Scenario: Confirm dispara la acción HTTP y refresca la tabla
+- **WHEN** el usuario confirma cualquiera de los tres modales
+- **THEN** se hace el `fetch` correspondiente, se cierra el modal, aparece el toast global (`crud-success`/`crud-error`), se actualiza `flash`/`flashKind` en el `<x-data>` raíz y se dispara `restream-targets-changed` para refrescar la tabla
+
+#### Scenario: Cancelar / Escape cierra el modal sin acción
+- **WHEN** el usuario hace clic en "Cancelar" o presiona Escape estando uno de los tres modales abiertos
+- **THEN** el modal se cierra y NO se ejecuta ninguna request
+
+### Requirement: Form sections are visually delimited
+
+The `<x-restream-target-modal>` SHALL render its inputs grouped into visually-delimited panels (Identificación, Conexión, Detalles de la transmisión, Activación). Each panel SHALL have a distinct background tint or border so the user can scan the form section by section, and SHALL NOT require the user to read every field to discover the OAuth-vs-manual mode toggle.
+
+#### Scenario: OAuth section is visually separate from manual RTMP section
+- **WHEN** the user opens the modal with a connected YouTube or Facebook account
+- **THEN** the OAuth switch card is visually distinct from the manual RTMP inputs (URL de destino / Stream Key); selecting one mode hides the other's fields via Alpine and the visual emphasis changes (active card has a stronger border or tinted background)
+
+#### Scenario: Información del canal is in its own header pill
+- **WHEN** the modal opens with a `channel` payload
+- **THEN** the "Canal destino: X" line appears in a small pill at the top of the form, NOT as a regular label
+
+### Requirement: Inputs share one consistent visual recipe
+
+Every input (text, select, textarea, datetime-local, file) SHALL use the same recipe: `block w-full rounded-xl border-gray-300 shadow-sm focus:border-rose-500 focus:ring-rose-500 text-sm py-2.5`. The select SHALL have a visible chevron icon. The checkbox SHALL be a larger rounded checkbox (`w-4 h-4`) with the rose brand color.
+
+#### Scenario: All inputs share the same border-radius
+- **WHEN** the form is rendered
+- **THEN** `getComputedStyle(input).borderRadius` is the same value (`0.75rem` = `12px`) for every text/select/textarea/datetime-local/file input
+
+#### Scenario: Select has a chevron icon
+- **WHEN** the Plataforma select is rendered
+- **THEN** an SVG chevron-down icon is visible on the right side of the field, indicating it opens a dropdown
+
+### Requirement: OAuth use-account switch is a prominent card
+
+The "Usar mi cuenta de X conectada" option SHALL render as a card with: the platform badge (YouTube/Facebook), the connected account display name, a green dot indicating healthy OAuth status, and the explanatory subtitle "crea la transmisión automáticamente". Clicking the card SHALL toggle the checkbox.
+
+#### Scenario: OAuth card shows the platform badge and account name
+- **WHEN** the modal opens with `platform = 'youtube'` and a connected YouTube account
+- **THEN** the OAuth card displays "YouTube" badge, the connected account display name (e.g., "Efrain Suarez (Jhon Suarez)"), a green dot, and the subtitle
+
+#### Scenario: Clicking the card toggles the underlying checkbox
+- **WHEN** the user clicks anywhere inside the OAuth card body
+- **THEN** the hidden `<input type="checkbox">` toggles, and the visual state of the card updates (border + bg tint) to reflect the new state
+
+### Requirement: Programar-inicio has an info banner explaining auto-enable
+
+The `Programar inicio` `<input type="datetime-local">` SHALL be accompanied by a visible info banner that reads (verbatim, in Spanish): "Si programas el inicio, el destino se activará automáticamente a la hora indicada. Puedes dejarlo desactivado en el formulario y se encenderá solo. La hora es local del navegador." The banner SHALL be rendered with `bg-sky-50 border-sky-200 text-sky-900` and a clock icon.
+
+#### Scenario: Banner appears under the field
+- **WHEN** the modal is rendered with `useConnectedAccount === true`
+- **THEN** a sky-blue banner with the literal copy is visible immediately under the Programar-inicio input
+
+#### Scenario: Past times are not selectable
+- **WHEN** the user opens the datetime picker
+- **THEN** the `min` attribute is set to the current local ISO-8601 string so past dates/times are not selectable
+
+### Requirement: Consolidated error banner replaces per-field red rows
+
+The form SHALL NOT render a separate `<template x-if="errors.X">` row per field. Instead, when the server returns 422, the modal SHALL render a single error banner at the top of the form listing `errors.general` plus one row per field error, with anchor links that focus the offending input.
+
+#### Scenario: Server 422 shows a single banner with all errors
+- **WHEN** the user submits the form with invalid data and the server responds 422 with `errors.destination_url = ['The destination url field is required.']`
+- **THEN** a single red banner at the top of the form lists "destination_url: The destination url field is required." and focuses the `destination_url` input on click
+
+### Requirement: Per-row countdown chip for scheduled targets
+
+The target list row SHALL render a countdown chip `Inicia en Xh Ym` (or `Inicia en Xd Xh` for ≥ 1 day) when the target has `scheduled_start_at` in the future and `enabled = false` or `status === 'idle'`. The chip SHALL recompute every minute via `setInterval` scoped to the row, and SHALL disappear once the target's status transitions to `starting` or `live`.
+
+#### Scenario: Chip appears for a future scheduled target
+- **WHEN** a target row has `scheduled_start_at = now() + 2h` and `enabled = false`
+- **THEN** the row contains a sky-blue rounded chip with a clock icon and the text "Inicia en 2h 0m"
+
+#### Scenario: Chip disappears once the cron flips enabled
+- **WHEN** the cron `restream:launch-scheduled` runs and sets `enabled = true`
+- **THEN** on the next page refresh / poll, the chip is no longer rendered for that target
+
+#### Scenario: Chip disappears for past scheduled times
+- **WHEN** a target's `scheduled_start_at < now()` and `enabled = false` (cron hasn't run yet, or the user manually disabled again)
+- **THEN** the chip is not rendered (no countdown, since the time has passed)
+
+### Requirement: Cron auto-enables scheduled targets
+
+The `restream:launch-scheduled` Artisan command SHALL run every minute (via `routes/console.php`) and SHALL flip `enabled` from `false` to `true` for every target whose `scheduled_start_at <= now() AND enabled = false`. Once flipped, the existing orchestrator picks the target up on its normal cadence.
+
+#### Scenario: Scheduled target auto-enables within 60s of its time
+- **WHEN** a target has `scheduled_start_at = now() - 5min` and `enabled = false`
+- **AND** the user runs `php artisan restream:launch-scheduled` (or the cron fires within the minute)
+- **THEN** the target's `enabled` column is `true` and the existing orchestrator / daemon starts pushing via the normal enable→start path
+
+#### Scenario: Already-enabled targets are not touched
+- **WHEN** the command runs and a target has `enabled = true`
+- **THEN** its `enabled` column is NOT modified (no-op, idempotent)
+
+### Requirement: Modal submit reflects the actual checkbox state for `enabled`
+
+The `<x-restream-target-modal>` SHALL submit the `enabled` field to the server as `"1"` when the "Activar al guardar (consume un slot)" checkbox is checked, and `"0"` when it is unchecked, in both `create` and `update` modes. The submit handler SHALL NOT rely on the literal string `"on"` to detect checked state, because the checkbox declares `value="1"`. The submit handler SHALL derive the boolean state either from the live DOM property (`form.querySelector('[name="enabled"]').checked`) or from a `FormData.has('enabled')` / `data.get('enabled') === '1'` check.
+
+#### Scenario: Checked checkbox submits `enabled=1` on create
+- **WHEN** the user opens the modal in `create` mode, fills required fields, leaves the "Activar al guardar" checkbox checked, and clicks "Guardar"
+- **THEN** the `POST /client/channels/{c}/restream-targets` request body contains `enabled=1`, the controller treats it as enabled, `RestreamQuotaGuard::assertCanEnable()` is invoked, and the new target row is persisted with `enabled = true`
+
+#### Scenario: Unchecked checkbox submits `enabled=0` on create
+- **WHEN** the user opens the modal in `create` mode and submits the form with the "Activar al guardar" checkbox unchecked
+- **THEN** the request body contains `enabled=0`, the controller does NOT invoke `assertCanEnable()`, and the new target row is persisted with `enabled = false`
+
+#### Scenario: Editing an active target keeps `enabled` when checkbox is unchanged
+- **WHEN** the user opens the modal in `update` mode on a target that already has `enabled = true` and submits the form without touching the checkbox
+- **THEN** the `PATCH` request body contains `enabled=1`, the controller leaves `enabled` unchanged, and `assertCanEnable()` is NOT invoked (no transition)
+
+#### Scenario: Editing an active target and unchecking releases the slot
+- **WHEN** the user opens the modal in `update` mode on a target that has `enabled = true` and unchecks "Activar al guardar" before saving
+- **THEN** the `PATCH` request body contains `enabled=0`, the controller persists `enabled = false`, `restreamUsedOutputsFor(C)` decreases by 1, and `restreamRemainingSlotsFor(C)` increases by 1
+
+#### Scenario: Checkbox state survives Alpine rebinding
+- **WHEN** Alpine re-renders the form (e.g., after switching platforms or toggling the OAuth switch) and the user submits without touching the checkbox
+- **THEN** the value sent to the server still reflects the visible checkbox state, not a stale FormData snapshot from before the re-render
+
+### Requirement: Cap pre-flight prevents wasted round-trips when at quota
+
+When `used_outputs >= max_outputs` for the channel of context, the modal SHALL render the "Activar al guardar" checkbox as `disabled`, show an inline helper text indicating that the cap has been reached, and SHALL NOT allow the user to toggle it on. The cap check SHALL be recomputed on modal open and on every refresh of the target list (driven by `restream-targets-changed`).
+
+#### Scenario: At cap, checkbox is disabled on open
+- **WHEN** the user opens the modal in `create` mode for a channel where `used_outputs === max_outputs`
+- **THEN** the "Activar al guardar" checkbox renders as `disabled`, an inline message "Has alcanzado el límite de destinos activos (X/X) para este canal" is visible, and the checkbox state cannot be toggled by clicks
+
+#### Scenario: Below cap, checkbox is enabled
+- **WHEN** the user opens the modal in `create` mode for a channel where `used_outputs < max_outputs`
+- **THEN** the "Activar al guardar" checkbox is enabled and toggleable
+
+#### Scenario: Crossing the cap reactively re-disables the checkbox
+- **WHEN** the user disables another target from the table (reducing `used_outputs`), the `restream-targets-changed` event refreshes the modal's payload, and `used_outputs` drops below `max_outputs`
+- **THEN** the checkbox becomes enabled again without requiring the user to close and reopen the modal
 

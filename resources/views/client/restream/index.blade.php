@@ -9,7 +9,11 @@
             targets: {{ $targetsJson ?? '[]' }},
             connectedAccounts: {{ $connectedAccountsJson ?? '[]' }},
             currentChannelId: @js($currentChannelId),
-            currentChannel: @js($currentChannel ? ['id' => $currentChannel->id, 'display_name' => $currentChannel->display_name] : null),
+            usedOutputs: @js((int) $usedOutputs),
+            maxOutputs: @js((int) $maxOutputs),
+            {{-- Pre-encoded JSON string so Blade's htmlspecialchars escapes the inner quotes;
+                 DO NOT switch to @json() here — it emits raw " which closes the x-data attribute. --}}
+            currentChannel: {{ $currentChannelJson ?? 'null' }},
             flash: '',
             flashKind: 'info',
             csrf() { return document.querySelector('meta[name=csrf-token]')?.content || window.csrfToken; },
@@ -34,7 +38,7 @@
                     alert('No tienes canales asignados. Pide al admin que te asigne uno para crear destinos de restream.');
                     return;
                 }
-                Alpine.store('modals').open('restream-target', { channel: this.currentChannel, mode: 'create', isAdmin: false, connectedAccounts: this.connectedAccounts });
+                Alpine.store('modals').open('restream-target', { channel: this.currentChannel, mode: 'create', isAdmin: false, connectedAccounts: this.connectedAccounts, usedOutputs: this.usedOutputs, maxOutputs: this.maxOutputs });
             },
             openEdit(t) {
                 const ch = this.channels.find((c) => c.id === t.channel_id) || { id: t.channel_id, display_name: t.channel?.display_name };
@@ -69,17 +73,63 @@
                 this.flashKind = r.ok ? 'ok' : 'err';
                 window.dispatchEvent(new CustomEvent('restream-targets-changed'));
             },
-            async remove(t) {
-                if (!confirm('¿Eliminar el destino ' + (t.name || '') + '?')) return;
-                const url = window.restreamUrls.client.destroy.replace('CID', t.channel_id).replace('TID', t.id);
-                const r = await fetch(url, {
+            askRemove(t) {
+                Alpine.store('modals').open('confirm', {
+                    title: 'Inactivar destino',
+                    message: '¿Inactivar el destino &quot;' + (t.name || '') + '&quot;? El slot quedará libre, pero la configuración se conserva. Puedes reactivarlo desde Editar.',
+                    tone: 'warning',
+                    iconName: 'archive',
+                    confirmLabel: 'Sí, inactivar',
+                    action: window.restreamUrls.client.destroy.replace('CID', t.channel_id).replace('TID', t.id),
                     method: 'DELETE',
-                    headers: { 'X-CSRF-TOKEN': this.csrf(), 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                    successEvent: 'restream-targets-changed',
                 });
-                const body = await r.json().catch(() => ({}));
-                this.flash = body.message || 'OK';
-                this.flashKind = r.ok ? 'ok' : 'err';
+            },
+            askInactivate(t) {
+                Alpine.store('modals').open('confirm', {
+                    title: 'Inactivar destino',
+                    message: '¿Inactivar el destino &quot;' + (t.name || '') + '&quot;? Se detendrá si está corriendo y el slot quedará libre para crear otro destino. Puedes volver a iniciarlo después.',
+                    tone: 'warning',
+                    iconName: 'pause',
+                    confirmLabel: 'Sí, inactivar',
+                    action: window.restreamUrls.client.deactivate.replace('CID', t.channel_id).replace('TID', t.id),
+                    method: 'POST',
+                    successEvent: 'restream-targets-changed',
+                });
+            },
+            async askCleanBroadcast(t) {
+                if (!t.platform_broadcast_id) return;
+                if (!confirm('¿Borrar el broadcast de YouTube (ID ' + t.platform_broadcast_id + ')? El destino seguirá existiendo; la próxima vez que lo enciendas se creará uno nuevo.')) return;
+                try {
+                    this.flash = 'Borrando broadcast de YouTube...'; this.flashKind = 'ok';
+                    const r = await fetch(window.restreamUrls.client.clean.replace('CID', t.channel_id).replace('TID', t.id), {
+                        method: 'POST',
+                        headers: { 'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]')?.content || '', 'Accept': 'application/json' },
+                    });
+                    const data = await r.json().catch(() => ({}));
+                    if (r.ok) {
+                        this.flash = 'Broadcast borrado. Se creará uno nuevo en el próximo Iniciar.';
+                        this.flashKind = 'ok';
+                        setTimeout(() => this.flash = '', 4000);
+                    } else {
+                        this.flash = data.message || 'Error al borrar';
+                        this.flashKind = 'error';
+                    }
+                } catch (e) { this.flash = String(e); this.flashKind = 'error'; }
                 window.dispatchEvent(new CustomEvent('restream-targets-changed'));
+            },
+            askForceDestroy(t) {
+                Alpine.store('modals').open('confirm', {
+                    title: 'Eliminar destino DEFINITIVAMENTE',
+                    message: 'Esta acción NO se puede deshacer. Se borrará el registro &quot;' + (t.name || '') + '&quot;, sus credenciales RTMP y el vínculo con la cuenta OAuth.',
+                    tone: 'danger',
+                    iconName: 'trash',
+                    confirmLabel: 'Eliminar para siempre',
+                    requireText: 'ELIMINAR',
+                    action: window.restreamUrls.client.forceDestroy.replace('CID', t.channel_id).replace('TID', t.id),
+                    method: 'DELETE',
+                    successEvent: 'restream-targets-changed',
+                });
             },
             init() {
                 window.addEventListener('restream-targets-changed', async () => {
@@ -101,9 +151,29 @@
                     const data = await r.json();
                     const freshTargets = data.targets || [];
                     const byId = Object.fromEntries(this.targets.map((t) => [t.id, t]));
+                    const now = Date.now();
                     this.targets = freshTargets.map((nt) => {
                         const old = byId[nt.id];
-                        return old ? { ...nt, _showLog: old._showLog, _logLines: old._logLines, _logInterval: old._logInterval, _latestStats: old._latestStats, _showCreds: old._showCreds, _streamKey: old._streamKey, _fullPushUrl: old._fullPushUrl, _sourceUrl: old._sourceUrl, _ffmpegCommand: old._ffmpegCommand } : nt;
+                        const merged = old ? { ...nt, _showLog: old._showLog, _logLines: old._logLines, _logInterval: old._logInterval, _latestStats: old._latestStats, _showCreds: old._showCreds, _streamKey: old._streamKey, _fullPushUrl: old._fullPushUrl, _sourceUrl: old._sourceUrl, _ffmpegCommand: old._ffmpegCommand } : nt;
+                        // Effective status: stored status counts only if the
+                        // heartbeat is fresh (<= 15s old). Otherwise we
+                        // display 'Sin señal' so the operator never sees
+                        // 'Activo' for a target whose daemon is actually dead.
+                        const hb = merged.last_heartbeat_at ? new Date(merged.last_heartbeat_at).getTime() : 0;
+                        const hbFresh = hb && (now - hb) < 15000;
+                        const pid = merged.pipeline_pid;
+                        const daemonRunning = pid && (now - pid) < 600000; // PID exists and was set < 10 min ago (heuristic for current session)
+                        if ((merged.status === 'live' || merged.status === 'starting') && !hbFresh) {
+                            merged._effectiveStatus = 'stale';
+                        } else if (hbFresh && daemonRunning) {
+                            // Daemon está vivo y reportando heartbeat → está en vivo,
+                            // aunque el campo status de la BD diga idle (típico
+                            // cuando el orquestador detuvo/reinició al daemon).
+                            merged._effectiveStatus = 'live';
+                        } else {
+                            merged._effectiveStatus = merged.status || 'idle';
+                        }
+                        return merged;
                     });
                 }
             },
@@ -225,10 +295,6 @@
                             </template>
                         </div>
                     </template>
-                    <div class="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 bg-gray-50 opacity-60">
-                        <span class="text-sm font-medium">TikTok</span>
-                        <span class="text-xs text-gray-500">Próximamente</span>
-                    </div>
                 </div>
             </div>
 
@@ -249,7 +315,7 @@
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Plataforma</th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Nombre</th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">PID</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Programación</th>
                             <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Acciones</th>
                         </tr>
                     </thead>
@@ -260,37 +326,62 @@
                                 <td class="px-6 py-3 text-sm text-gray-700" x-text="t.name"></td>
                                 <td class="px-6 py-3 text-sm">
                                     <span class="inline-flex items-center gap-1.5">
-                                        <template x-if="t.status === 'live'">
+                                        {{-- Effective status: stored status only counts if heartbeat is fresh. A target with status=live but stale heartbeat is shown as "Sin señal". --}}
+                                        <template x-if="t._effectiveStatus === 'live'">
                                             <span class="inline-flex items-center gap-1.5 px-2 py-0.5 text-xs rounded bg-emerald-100 text-emerald-800">
                                                 <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
                                                 Activo
                                             </span>
                                         </template>
-                                        <template x-if="t.status === 'starting'">
+                                        <template x-if="t._effectiveStatus === 'starting'">
                                             <span class="inline-flex items-center gap-1.5 px-2 py-0.5 text-xs rounded bg-amber-100 text-amber-800">
                                                 <span class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
                                                 Iniciando
                                             </span>
                                         </template>
-                                        <template x-if="t.status === 'error'">
+                                        <template x-if="t._effectiveStatus === 'error'">
                                             <span class="inline-flex items-center gap-1.5 px-2 py-0.5 text-xs rounded bg-red-100 text-red-800" :title="t.last_error || 'Error'">
                                                 <span class="w-1.5 h-1.5 rounded-full bg-red-500"></span>
                                                 Error
                                             </span>
                                         </template>
-                                        <template x-if="t.status !== 'live' && t.status !== 'starting' && t.status !== 'error'">
+                                        <template x-if="t._effectiveStatus === 'stale'">
+                                            <span class="inline-flex items-center gap-1.5 px-2 py-0.5 text-xs rounded bg-amber-100 text-amber-800" title="El daemon dejó de reportar hace más de 15 segundos">
+                                                <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                                                Sin señal
+                                            </span>
+                                        </template>
+                                        <template x-if="!['live','starting','error','stale'].includes(t._effectiveStatus)">
                                             <span class="inline-flex items-center gap-1.5 px-2 py-0.5 text-xs rounded bg-gray-100 text-gray-700">
                                                 <span class="w-1.5 h-1.5 rounded-full bg-gray-400"></span>
                                                 Inactivo
                                             </span>
                                         </template>
-                                    </span>
                                 </td>
-                                <td class="px-6 py-3 text-sm text-gray-500" x-text="t.pipeline_pid || '—'"></td>
+                                <td class="px-6 py-3 text-sm text-gray-600 whitespace-nowrap">
+                                    <template x-if="t.scheduled_starts_at">
+                                        <div class="space-y-0.5">
+                                            <div class="inline-flex items-center gap-1 text-xs" title="Próxima ventana de programación">
+                                                <svg class="w-3.5 h-3.5 text-sky-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                                                <span class="tabular-nums" x-text="t.scheduled_starts_at"></span>
+                                            </div>
+                                        </div>
+                                    </template>
+                                    <template x-if="!t.scheduled_starts_at">
+                                        <span class="text-gray-300">—</span>
+                                    </template>
+                                    <div x-show="t.last_auto_start_at || t.last_auto_stop_at" class="mt-1 text-[10px] text-gray-400 leading-tight" :title="'Registro de ejecuciones automáticas del programador'">
+                                        <div x-show="t.last_auto_start_at"><span class="text-emerald-600 font-semibold">✓ auto-inicio:</span> <span x-text="t.last_auto_start_at"></span></div>
+                                        <div x-show="t.last_auto_stop_at"><span class="text-rose-600 font-semibold">✓ auto-fin:</span> <span x-text="t.last_auto_stop_at"></span></div>
+                                    </div>
+                                </td>
                                 <td class="px-6 py-3 text-right">
                                     <div class="inline-flex flex-wrap gap-1.5">
                                         <button type="button" @click="openEdit(t)" title="Editar destino" class="inline-flex items-center px-2.5 py-1 text-xs font-semibold rounded bg-gradient-to-br from-indigo-400 to-indigo-600 text-white shadow-sm hover:from-indigo-500 hover:to-indigo-700">
                                             Editar
+                                        </button>
+                                        <button type="button" x-show="t.share_url" @click="navigator.clipboard.writeText(t.share_url); flash = 'Link copiado: ' + t.share_url; flashKind = 'ok'; setTimeout(() => flash = '', 4000);" title="Copiar link de la emisión de YouTube para compartir" class="inline-flex items-center px-2.5 py-1 text-xs font-semibold rounded bg-gradient-to-br from-red-500 to-red-700 text-white shadow-sm hover:from-red-600 hover:to-red-800">
+                                            <span x-text="t._copied ? '¡Copiado!' : 'Compartir'"></span>
                                         </button>
                                         <button type="button" @click="openLog(t)" title="Ver log del proceso" class="inline-flex items-center px-2.5 py-1 text-xs font-semibold rounded bg-gradient-to-br from-slate-500 to-slate-700 text-white shadow-sm hover:from-slate-600 hover:to-slate-800">
                                             <span x-text="t._showLog ? 'Ocultar log' : 'Log'"></span>
@@ -301,10 +392,17 @@
                                         <button type="button" @click="start(t)" x-show="!(t.status === 'live' || t.status === 'starting' || t.status === 'error' || t.pipeline_pid)" title="Iniciar" class="inline-flex items-center px-2.5 py-1 text-xs font-semibold rounded bg-gradient-to-br from-emerald-400 to-emerald-600 text-white shadow-sm hover:from-emerald-500 hover:to-emerald-700">
                                             Iniciar
                                         </button>
-                                        <button type="button" @click="stop(t)" x-show="t.status === 'live' || t.status === 'starting' || t.status === 'error' || t.pipeline_pid" title="Detener" class="inline-flex items-center px-2.5 py-1 text-xs font-semibold rounded bg-gradient-to-br from-amber-400 to-amber-600 text-white shadow-sm hover:from-amber-500 hover:to-amber-700">
-                                            Detener
-                                        </button>
-                                        <button type="button" @click="remove(t)" title="Eliminar destino" class="inline-flex items-center px-2.5 py-1 text-xs font-semibold rounded bg-gradient-to-br from-red-400 to-red-600 text-white shadow-sm hover:from-red-500 hover:to-red-700">
+                                         <button type="button" @click="stop(t)" x-show="t.status === 'live' || t.status === 'starting' || t.status === 'error' || t.pipeline_pid" title="Detener" class="inline-flex items-center px-2.5 py-1 text-xs font-semibold rounded bg-gradient-to-br from-amber-400 to-amber-600 text-white shadow-sm hover:from-amber-500 hover:to-amber-700">
+                                             Detener
+                                         </button>
+                                         <button type="button" @click="askCleanBroadcast(t)" x-show="t.platform_broadcast_id" title="Borrar el broadcast de YouTube Studio (no toca el destino)" class="inline-flex items-center px-2.5 py-1 text-xs font-semibold rounded bg-gradient-to-br from-purple-400 to-purple-600 text-white shadow-sm hover:from-purple-500 hover:to-purple-700">
+                                             <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M1 7h22M9 7V4a2 2 0 012-2h2a2 2 0 012 2v3"/></svg>
+                                             Limpiar
+                                         </button>
+                                         <button type="button" @click="askInactivate(t)" x-show="t.enabled" title="Inactivar (libera el slot, conserva la configuración)" class="inline-flex items-center px-2.5 py-1 text-xs font-semibold rounded bg-gradient-to-br from-slate-400 to-slate-600 text-white shadow-sm hover:from-slate-500 hover:from-slate-700">
+                                            Inactivar
+                                         </button>
+                                         <button type="button" @click="askForceDestroy(t)" title="Eliminar DEFINITIVAMENTE (no se puede recuperar)" class="inline-flex items-center px-2.5 py-1 text-xs font-semibold rounded bg-red-900 text-white shadow-sm hover:bg-red-950 border border-red-700">
                                             Eliminar
                                         </button>
                                     </div>
@@ -390,6 +488,12 @@
         @endif
     </div>
 
-    <x-restream-target-modal />
+    <x-restream-target-modal :media-images-json="$mediaImagesJson ?? '[]'" />
+    <x-confirm-modal />
     <x-restream-urls />
+    <script>
+        // Inyecta la lista de imágenes/videos del canal en window para que el
+        // modal anidado pueda usarlas en el selector de miniaturas por ventana.
+        window.__rtsmMediaImages = {!! $mediaImagesJson !!};
+    </script>
 </x-client-layout>
