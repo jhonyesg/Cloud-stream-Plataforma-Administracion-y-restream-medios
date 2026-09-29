@@ -44,6 +44,10 @@ class RestreamStatusResolver
             return self::YT_REVOKED;
         }
 
+        if ($target->daemon_stalled_at && $target->daemon_stalled_at->gt(now()->subSeconds(60))) {
+            return self::YT_NO_DATA;
+        }
+
         if (! $hbFresh) {
             return self::STALE;
         }

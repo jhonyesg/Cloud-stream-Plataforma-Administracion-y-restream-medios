@@ -26,6 +26,8 @@ class RestreamHeartbeatController extends Controller
             'pipeline_pid' => ['nullable', 'integer'],
             'error_message' => ['nullable', 'string'],
             'timestamp' => ['nullable', 'string'],
+            'daemon_stalled_at' => ['nullable', 'date'],
+            'video_bitrate_kbps' => ['nullable', 'integer'],
         ]);
 
         $status = $data['status'];
@@ -36,6 +38,7 @@ class RestreamHeartbeatController extends Controller
                 'pipeline_pid' => null,
                 'last_heartbeat_at' => now(),
                 'last_error' => null,
+                'daemon_stalled_at' => null,
             ]);
         } else {
             // Ignore stray heartbeats from a daemon process that predates the
@@ -59,11 +62,15 @@ class RestreamHeartbeatController extends Controller
             // that's the pid `stop()` signals. Letting heartbeats overwrite it
             // meant "Detener" would kill the ffmpeg child instead of the
             // daemon, which then just restarted it via its own watchdog.
-            $target->update([
+            $update = [
                 'status' => $status,
                 'last_heartbeat_at' => now(),
                 'last_error' => $data['error_message'] ?? $target->last_error,
-            ]);
+            ];
+            if (array_key_exists('daemon_stalled_at', $data)) {
+                $update['daemon_stalled_at'] = $data['daemon_stalled_at'] ?: null;
+            }
+            $target->update($update);
         }
 
         return response()->json(['received' => true]);

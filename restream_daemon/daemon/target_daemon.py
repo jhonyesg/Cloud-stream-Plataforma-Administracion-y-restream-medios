@@ -184,15 +184,23 @@ class TargetDaemon:
         """Background thread: log stream stats every 5s + watchdog."""
         last_frames = 0
         stuck_count = 0
+        zero_bitrate_since = None
+        dead_output_reported = False
         while not self._stop_event.is_set():
             self._stop_event.wait(5)
             if not self.pipeline or not self._running:
                 continue
             try:
+                # Drain stderr and parse real frame/fps/bitrate from ffmpeg's
+                # output. This replaces the previous wall-clock estimate that
+                # let dead RTMP sockets slip past the watchdog.
+                stderr_chunk = self.pipeline.drain_stderr()
                 stats = self.pipeline.get_stream_stats()
                 uptime = int(time.time() - self.pipeline.started_at)
                 current_frames = stats.get('frames_sent', 0)
                 state = stats.get('pipeline_state', '?')
+                bitrate_actual = stats.get('video_bitrate_actual', 0)
+                rtmp_failure_seen = stats.get('rtmp_failure_seen', False)
 
                 # Auto-restart when the ffmpeg child exits
                 if state in ('stopped', 'error'):
@@ -202,7 +210,36 @@ class TargetDaemon:
                     self._restart_child()
                     stuck_count = 0
                     last_frames = 0
+                    zero_bitrate_since = None
+                    dead_output_reported = False
                     continue
+
+                # Dead-output watchdog: YouTube (or any RTMP server) closes
+                # the connection without killing ffmpeg. ffmpeg keeps reading
+                # source bytes but writes into a dead socket. The next ffmpeg
+                # progress line shows bitrate=0 AND a few seconds later the
+                # stderr includes RTMP_ReadPacket / Connection reset lines.
+                # Detect that combo and restart the child.
+                if bitrate_actual == 0 and rtmp_failure_seen:
+                    if zero_bitrate_since is None:
+                        zero_bitrate_since = time.time()
+                    elif not dead_output_reported and (time.time() - zero_bitrate_since) >= 10:
+                        self._log("[WATCHDOG] RTMP output socket closed, restarting child…")
+                        self._status = 'error'
+                        self._error_message = 'rtmp-output-closed'
+                        self._post_stall_heartbeat()
+                        self._restart_child()
+                        zero_bitrate_since = None
+                        dead_output_reported = False
+                        stuck_count = 0
+                        last_frames = 0
+                        continue
+                else:
+                    zero_bitrate_since = None
+                    if dead_output_reported and bitrate_actual > 0:
+                        # New child is healthy — clear the stall signal.
+                        self._post_stall_cleared_heartbeat()
+                        dead_output_reported = False
 
                 # Watchdog: detect stuck pipeline (no frame progress)
                 if state != 'playing' or current_frames == last_frames:
@@ -212,6 +249,7 @@ class TargetDaemon:
                         self._restart_child()
                         stuck_count = 0
                         last_frames = 0
+                        zero_bitrate_since = None
                         continue
                 else:
                     stuck_count = 0
@@ -221,13 +259,40 @@ class TargetDaemon:
                 # Format: [STATS] uptime=120s bitrate=2500kbps fps=30.0 frames_sent=3600 state=playing
                 self._log(
                     f"[STATS] uptime={uptime}s "
-                    f"bitrate={stats.get('video_bitrate', 0)}kbps "
-                    f"fps={stats.get('fps', 0):.1f} "
+                    f"bitrate={stats.get('video_bitrate_actual', 0)}kbps "
+                    f"fps={stats.get('fps_actual', 0):.1f} "
                     f"frames_sent={current_frames} "
-                    f"state={state}"
+                    f"state={state} "
+                    f"rtmp_fail={int(bool(rtmp_failure_seen))}"
                 )
             except Exception as e:
                 self._log(f"[STATS] Error: {e}")
+
+    def _post_stall_heartbeat(self) -> None:
+        """Send a heartbeat carrying daemon_stalled_at = now()."""
+        try:
+            self.client.post_restream_heartbeat(self.target_id, {
+                'status': self._status,
+                'pipeline_pid': self.pipeline.proc.pid if self.pipeline and self.pipeline.proc else None,
+                'error_message': self._error_message,
+                'daemon_stalled_at': datetime.utcnow().isoformat(),
+                'timestamp': datetime.utcnow().isoformat(),
+            })
+        except Exception as e:
+            self._log(f"[DAEMON] stall heartbeat error: {e}")
+
+    def _post_stall_cleared_heartbeat(self) -> None:
+        """Send a heartbeat carrying daemon_stalled_at = null (recovery)."""
+        try:
+            self.client.post_restream_heartbeat(self.target_id, {
+                'status': self._status,
+                'pipeline_pid': self.pipeline.proc.pid if self.pipeline and self.pipeline.proc else None,
+                'error_message': None,
+                'daemon_stalled_at': None,
+                'timestamp': datetime.utcnow().isoformat(),
+            })
+        except Exception as e:
+            self._log(f"[DAEMON] stall-cleared heartbeat error: {e}")
 
     def _restart_child(self) -> None:
         """Restart the ffmpeg child with the same config."""

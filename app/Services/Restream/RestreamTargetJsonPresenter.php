@@ -51,6 +51,8 @@ class RestreamTargetJsonPresenter
             'platform_broadcast_lifecycle_error' => $t->platform_broadcast_lifecycle_error,
             'last_youtube_poll_at' => $t->last_youtube_poll_at
                 ? $t->last_youtube_poll_at->format('Y-m-d H:i:s') : null,
+            'daemon_stalled_at' => $t->daemon_stalled_at
+                ? $t->daemon_stalled_at->format('Y-m-d H:i:s') : null,
             'share_url' => $t->platform === 'youtube' && $t->platform_broadcast_id
                 ? 'https://www.youtube.com/watch?v=' . $t->platform_broadcast_id
                 : null,

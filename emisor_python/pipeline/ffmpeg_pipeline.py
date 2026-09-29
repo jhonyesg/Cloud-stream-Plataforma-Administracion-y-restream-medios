@@ -1,4 +1,5 @@
 import os
+import re
 import select
 import signal
 import subprocess
@@ -7,6 +8,21 @@ from typing import Any, Dict, Optional
 
 from models.timeline_item import TimelineItem
 from models.virtual_screen import VirtualScreen
+
+
+# Patterns that ffmpeg writes to stderr every ~1s when `-loglevel info` is set.
+# Tolerates whitespace and pipe separators across ffmpeg versions.
+_FRAME_RE = re.compile(r'frame=\s*(\d+)')
+_FPS_RE = re.compile(r'fps=\s*(\d+(?:\.\d+)?)')
+_BITRATE_RE = re.compile(r'bitrate=\s*(\d+(?:\.\d+)?)k?bits/s')
+
+# Patterns that indicate the RTMP output socket has been closed by the remote.
+# Captured from real ffmpeg stderr: "RTMP_ReadPacket: failed to read RTMP packet",
+# "Connection reset by peer", "av_interleaved_write_frame: Connection reset".
+_RTMP_FAILURE_RE = re.compile(
+    r'(RTMP_ReadPacket|failed to read RTMP|Connection reset by peer|av_interleaved_write_frame: Connection reset|IO error on send buffer)',
+    re.IGNORECASE,
+)
 
 
 class FFmpegProcess:
@@ -23,6 +39,15 @@ class FFmpegProcess:
         self.last_error: str = ''
         self._fps = fps
         self._video_bitrate_kbps = video_bitrate_kbps
+        # Stats parsed from ffmpeg's stderr. Updated by `drain_stderr`.
+        self._frames_actual: int = 0
+        self._fps_actual: float = 0.0
+        self._bitrate_actual_kbps: int = 0
+        self._stderr_tail: str = ''  # last ~64 KB of stderr for failure detection
+        self._rtmp_failure_seen: bool = False
+        # Cached raw stderr lines so get_stream_stats() can match failure
+        # patterns even if drain_stderr was called by something else first.
+        self._stderr_window: str = ''
 
     def spawn(self, args: list, cwd: Optional[str] = None, env: Optional[Dict[str, str]] = None) -> None:
         """Start a new ffmpeg subprocess, killing any previous one first."""
@@ -38,6 +63,14 @@ class FFmpegProcess:
             env=env,
         )
         self.started_at = time.time()
+        # Reset stderr-derived stats so a fresh child doesn't inherit
+        # the previous child's frame count.
+        self._frames_actual = 0
+        self._fps_actual = 0.0
+        self._bitrate_actual_kbps = 0
+        self._stderr_tail = ''
+        self._stderr_window = ''
+        self._rtmp_failure_seen = False
 
     def is_running(self) -> bool:
         return self.proc is not None and self.proc.poll() is None
@@ -76,6 +109,13 @@ class FFmpegProcess:
             'fps': float(self._fps),
             'frames_sent': 0,
             'pipeline_state': 'null',
+            # When the daemon has actually drained stderr and parsed a frame=
+            # line, it sets `frames_actual`. Falls back to the wall-clock
+            # estimate only if no stderr has arrived yet (first ~1 s of life).
+            'video_bitrate_actual': self._bitrate_actual_kbps,
+            'fps_actual': self._fps_actual,
+            'frames_actual': self._frames_actual,
+            'rtmp_failure_seen': self._rtmp_failure_seen,
         }
         if not self.proc:
             return stats
@@ -83,9 +123,11 @@ class FFmpegProcess:
         returncode = self.proc.poll()
         if returncode is None:
             stats['pipeline_state'] = 'playing'
-            # Approximate frames from elapsed time
-            elapsed = time.time() - self.started_at
-            stats['frames_sent'] = int(elapsed * self._fps)
+            if self._frames_actual > 0:
+                stats['frames_sent'] = self._frames_actual
+            else:
+                elapsed = time.time() - self.started_at
+                stats['frames_sent'] = int(elapsed * self._fps)
         else:
             stats['pipeline_state'] = 'stopped' if returncode == 0 else 'error'
             if self.proc.stderr:
@@ -102,7 +144,10 @@ class FFmpegProcess:
         """Non-blocking read of whatever stderr has produced so far.
 
         Used by the restream daemon to forward ffmpeg stderr lines into the
-        rotated log. Returns the decoded chunk (may be empty).
+        rotated log. Also parses `frame=`, `fps=`, `bitrate=` from the most
+        recent lines and stores them for `get_stream_stats()`.
+
+        Returns the decoded chunk (may be empty).
         """
         if not self.proc or not self.proc.stderr:
             return ''
@@ -120,7 +165,43 @@ class FFmpegProcess:
                     break
         except Exception:
             pass
-        return data.decode(errors='replace')
+        decoded = data.decode(errors='replace')
+
+        if decoded:
+            self._stderr_tail = (self._stderr_tail + decoded)[-max_bytes:]
+            self._stderr_window = self._stderr_tail
+            self._parse_stderr_stats(self._stderr_tail)
+            if _RTMP_FAILURE_RE.search(self._stderr_tail):
+                self._rtmp_failure_seen = True
+
+        return decoded
+
+    def _parse_stderr_stats(self, chunk: str) -> None:
+        """Pull the latest `frame=`, `fps=`, `bitrate=` from the stderr tail.
+
+        Uses `findall` on each line so we get the most recent match; ffmpeg
+        prints a fresh progress line about once per second.
+        """
+        if not chunk:
+            return
+        # ffmpeg prints progress lines like:
+        # frame= 1234 fps= 30 q=-1.0 size= 1234kB time=00:01:23.45 bitrate=2500.5kbits/s
+        # The block ends with `progress=continue` (or empty line in old versions).
+        # We grab the LAST match per pattern to avoid stale values.
+        try:
+            frames = _FRAME_RE.findall(chunk)
+            if frames:
+                self._frames_actual = int(frames[-1])
+            fps = _FPS_RE.findall(chunk)
+            if fps:
+                self._fps_actual = float(fps[-1])
+            brs = _BITRATE_RE.findall(chunk)
+            if brs:
+                self._bitrate_actual_kbps = int(round(float(brs[-1])))
+        except Exception:
+            # Regex failure shouldn't crash the supervisor. Worst case: the
+            # next sample will re-parse and (hopefully) succeed.
+            pass
 
 
 class FFmpegPipelineManager(FFmpegProcess):
@@ -155,6 +236,20 @@ class FFmpegPipelineManager(FFmpegProcess):
             '-hide_banner', '-loglevel', 'warning',
             '-re', '-fflags', '+genpts',
         ]
+
+        # MINIMO FIX Redplanet_TV (2026-09-17): cuando el stream key es
+        # Redplanet_TV (un solo item en loop de 120s), usar -stream_loop -1
+        # para que ffmpeg loope el input infinitamente sin desconectarse.
+        # Esto elimina el gap de ~5s cada 2 min que se producia al matar y
+        # respawnear ffmpeg en cada ciclo. Para otros canales el
+        # comportamiento se mantiene intacto (-t duration).
+        is_redplanet = 'Redplanet_TV' in (vs.output_url or '')
+
+        if is_redplanet:
+            args.extend(['-stream_loop', '-1'])
+            # En Redplanet forzamos seek=0 para evitar -ss past-EOF que rompe
+            # el loop. El item dura 120s y al hacer loop se reinicia solo.
+            seek_offset_sec = 0
 
         if seek_offset_sec is not None and seek_offset_sec > 0:
             args.extend(['-ss', f"{float(seek_offset_sec):.3f}"])
@@ -214,6 +309,20 @@ class FFmpegPipelineManager(FFmpegProcess):
             if vs.codec_video in ('libx264', 'libx265'):
                 preset = vs.video_preset or 'veryfast'
                 args.extend(['-preset', preset])
+                if vs.codec_video == 'libx264':
+                    args.extend([
+                        '-tune', 'zerolatency',
+                        '-threads', '4',
+                        '-x264-params', 'bframes=0:refs=1:rc-lookahead=0:sync-lookahead=0:keyint=60:min-keyint=60:scenecut=0:sliced-threads=0',
+                    ])
+            elif vs.codec_video == 'libopenh264':
+                args.extend([
+                    '-threads', '4',
+                    '-coder', 'cavlc',
+                    '-loopfilter', '0',
+                    '-slice_mode', 'fixed',
+                    '-slices', '1',
+                ])
             args.extend(['-b:v', f"{vs.video_bitrate_kbps}k", '-r', str(vs.fps)])
 
         # Audio codec
@@ -222,7 +331,7 @@ class FFmpegPipelineManager(FFmpegProcess):
         else:
             args.extend(['-c:a', vs.codec_audio, '-ar', '44100', '-b:a', f"{vs.audio_bitrate_kbps}k"])
 
-        if duration_limit is not None:
+        if duration_limit is not None and not is_redplanet:
             args.extend(['-t', f'{duration_limit:.3f}'])
 
         # Output format / URL

@@ -452,7 +452,18 @@
                                     </span>
                                 </td>
                                 <td class="px-6 py-3 text-sm text-gray-600 whitespace-nowrap">
-                                    <template x-if="t.scheduled_start_at || t.scheduled_stop_at">
+                                    <template x-if="t.next_ends_at">
+                                        <div class="space-y-0.5">
+                                            <div class="inline-flex items-center gap-1 text-xs font-mono"
+                                                 :data-countdown-target="t.id"
+                                                 :data-ends-at="t.next_ends_at">
+                                                <svg class="w-3.5 h-3.5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                                                <span :data-countdown-text="t.id">Termina…</span>
+                                            </div>
+                                        </div>
+                                    </template>
+                                    <template x-if="!t.next_ends_at">
+                                        <template x-if="t.scheduled_start_at || t.scheduled_stop_at">
                                         <div class="space-y-0.5">
                                             <div x-show="t.scheduled_start_at" class="inline-flex items-center gap-1 text-xs" :title="'Inicio programado'">
                                                 <svg class="w-3.5 h-3.5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
@@ -467,6 +478,7 @@
                                     <template x-if="!t.scheduled_start_at && !t.scheduled_stop_at">
                                         <span class="text-gray-300">—</span>
                                     </template>
+                                        </template>
                                     <div x-show="t.last_auto_start_at || t.last_auto_stop_at" class="mt-1 text-[10px] text-gray-400 leading-tight" :title="'Registro de ejecuciones automáticas del programador'">
                                         <div x-show="t.last_auto_start_at"><span class="text-emerald-600 font-semibold">✓ auto-inicio:</span> <span x-text="t.last_auto_start_at"></span></div>
                                         <div x-show="t.last_auto_stop_at"><span class="text-rose-600 font-semibold">✓ auto-fin:</span> <span x-text="t.last_auto_stop_at"></span></div>
@@ -581,4 +593,32 @@
     <x-restream-target-modal :media-images-json="$mediaImagesJson ?? '[]'" />
     <x-confirm-modal />
     <x-restream-urls />
+    <script>
+        (function () {
+            function fmt(diffMs) {
+                if (diffMs <= 0) return 'Finalizado';
+                const totalSec = Math.floor(diffMs / 1000);
+                const h = Math.floor(totalSec / 3600);
+                const m = Math.floor((totalSec % 3600) / 60);
+                const s = totalSec % 60;
+                if (h > 0) return `Termina en ${h}h ${String(m).padStart(2,'0')}m`;
+                if (m > 0) return `Termina en ${m}m ${String(s).padStart(2,'0')}s`;
+                return `Termina en ${s}s`;
+            }
+            function tick() {
+                const now = Date.now();
+                document.querySelectorAll('[data-countdown-target]').forEach((el) => {
+                    const id = el.dataset.countdownTarget;
+                    const endsAt = el.dataset.endsAt ? new Date(el.dataset.endsAt).getTime() : null;
+                    const textEl = document.querySelector('[data-countdown-text="' + id + '"]');
+                    if (!textEl) return;
+                    if (!endsAt) { textEl.textContent = '—'; return; }
+                    const diff = endsAt - now;
+                    textEl.textContent = diff > 0 ? fmt(diff) : 'Finalizado';
+                });
+            }
+            tick();
+            setInterval(tick, 1000);
+        })();
+    </script>
 </x-admin-layout>

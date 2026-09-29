@@ -380,16 +380,26 @@
                                         </template>
                                 </td>
                                 <td class="px-6 py-3 text-sm text-gray-600 whitespace-nowrap">
-                                    <template x-if="t.scheduled_starts_at">
+                                    <template x-if="t.next_ends_at">
                                         <div class="space-y-0.5">
+                                            <div class="inline-flex items-center gap-1 text-xs font-mono"
+                                                 :data-countdown-target="t.id"
+                                                 :data-ends-at="t.next_ends_at">
+                                                <svg class="w-3.5 h-3.5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                                                <span :data-countdown-text="t.id">Termina…</span>
+                                            </div>
+                                        </div>
+                                    </template>
+                                    <template x-if="!t.next_ends_at">
+                                        <template x-if="t.scheduled_starts_at">
                                             <div class="inline-flex items-center gap-1 text-xs" title="Próxima ventana de programación">
                                                 <svg class="w-3.5 h-3.5 text-sky-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                                                 <span class="tabular-nums" x-text="t.scheduled_starts_at"></span>
                                             </div>
-                                        </div>
-                                    </template>
-                                    <template x-if="!t.scheduled_starts_at">
-                                        <span class="text-gray-300">—</span>
+                                        </template>
+                                        <template x-if="!t.scheduled_starts_at">
+                                            <span class="text-gray-300">—</span>
+                                        </template>
                                     </template>
                                     <div x-show="t.last_auto_start_at || t.last_auto_stop_at" class="mt-1 text-[10px] text-gray-400 leading-tight" :title="'Registro de ejecuciones automáticas del programador'">
                                         <div x-show="t.last_auto_start_at"><span class="text-emerald-600 font-semibold">✓ auto-inicio:</span> <span x-text="t.last_auto_start_at"></span></div>
@@ -512,6 +522,39 @@
     <x-restream-target-modal :media-images-json="$mediaImagesJson ?? '[]'" />
     <x-confirm-modal />
     <x-restream-urls />
+    <script>
+        // Per-second countdown for the inline restream index. Same logic as the
+        // schedules view but bound to data-countdown-target on the row.
+        (function () {
+            function fmt(diffMs) {
+                if (diffMs <= 0) return 'Finalizado';
+                const totalSec = Math.floor(diffMs / 1000);
+                const h = Math.floor(totalSec / 3600);
+                const m = Math.floor((totalSec % 3600) / 60);
+                const s = totalSec % 60;
+                if (h > 0) return `Termina en ${h}h ${String(m).padStart(2,'0')}m`;
+                if (m > 0) return `Termina en ${m}m ${String(s).padStart(2,'0')}s`;
+                return `Termina en ${s}s`;
+            }
+            function tick() {
+                const now = Date.now();
+                document.querySelectorAll('[data-countdown-target]').forEach((el) => {
+                    const id = el.dataset.countdownTarget;
+                    const endsAt = el.dataset.endsAt ? new Date(el.dataset.endsAt).getTime() : null;
+                    const textEl = document.querySelector('[data-countdown-text="' + id + '"]');
+                    if (!textEl) return;
+                    if (!endsAt) {
+                        textEl.textContent = '—';
+                        return;
+                    }
+                    const diff = endsAt - now;
+                    textEl.textContent = diff > 0 ? fmt(diff) : 'Finalizado';
+                });
+            }
+            tick();
+            setInterval(tick, 1000);
+        })();
+    </script>
     <script>
         // Inyecta la lista de imágenes/videos del canal en window para que el
         // modal anidado pueda usarlas en el selector de miniaturas por ventana.

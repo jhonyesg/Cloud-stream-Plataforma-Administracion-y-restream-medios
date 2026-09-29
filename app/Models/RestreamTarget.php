@@ -67,6 +67,7 @@ class RestreamTarget extends Model
         'platform_broadcast_lifecycle_at',
         'platform_broadcast_lifecycle_error',
         'last_youtube_poll_at',
+        'daemon_stalled_at',
     ];
 
     protected $hidden = ['stream_key'];
@@ -89,6 +90,7 @@ class RestreamTarget extends Model
             'scheduled_stop_at' => 'datetime',
             'platform_broadcast_lifecycle_at' => 'datetime',
             'last_youtube_poll_at' => 'datetime',
+            'daemon_stalled_at' => 'datetime',
         ];
     }
 
