@@ -35,7 +35,7 @@ The system SHALL persist targets in a `restream_targets` table with the followin
 - `deleted_at` (timestamp, nullable) — soft deletes
 - timestamps (`created_at`, `updated_at`)
 
-A **partial** unique constraint SHALL exist on `(user_id, channel_id, platform) WHERE deleted_at IS NULL`, so soft-deleted targets release the triple and a new target with the same triple can be created. On `store`, the controller SHALL pre-check duplicates (including soft-deleted rows) and respond 422 with an actionable message instead of letting the DB raise a 500.
+A **partial** unique constraint SHALL exist on `(user_id, channel_id, platform) WHERE deleted_at IS NULL`, so soft-deleted targets release the triple and a new target with the same triple can be created. On `store`, the controller SHALL pre-check duplicates (including soft-deleted rows) and respond 422 with an actionable message instead of letting the DB raise a 500. The controller-level validator SHALL distinguish soft-deleted rows that were aborted during a failed create (no `stream_key`, no `platform_broadcast_id`, `status = 'idle'`) from soft-deleted rows that the user (or admin) intentionally archived (carry credentials and/or a remote broadcast id), and SHALL auto-purge the aborted ones so they never block a retry.
 
 The scheduler SHALL find candidates via partial indexes: `(scheduled_start_at) WHERE enabled = false` and `(scheduled_stop_at) WHERE scheduled_stop_at IS NOT NULL`.
 
@@ -54,6 +54,49 @@ The scheduler SHALL find candidates via partial indexes: `(scheduled_start_at) W
 #### Scenario: Soft-deleted target releases the triple
 - **WHEN** a user's target `(channel_id=X, platform=youtube)` is soft-deleted and they create a new one with the same triple
 - **THEN** the insert succeeds (no 500, no unique violation)
+
+#### Scenario: Failed OAuth create does not leave an orphan row
+- **WHEN** a client posts `POST /client/channels/{c}/restream-targets` with a connected `platform_account_id` for YouTube (or Facebook) and the `createPlatformBroadcast()` call throws `RestreamPlatformAccountException`
+- **THEN** the controller hard-deletes the just-inserted row (via `forceDelete()`), the client receives 422 with the platform error message, and `restream_targets` contains zero rows for that `(user_id, channel_id, platform)` triplet — neither live nor soft-deleted
+- **AND** the failed attempt is recorded in `audit_logs` with the originating `RestreamPlatformAccountException` message
+
+#### Scenario: Retry after a failed OAuth create succeeds
+- **WHEN** a previous `createPlatformBroadcast()` failed and was rolled back (so no soft-deleted row exists for the triplet)
+- **AND** the client retries `POST /client/channels/{c}/restream-targets` with the same connected account after fixing the underlying issue (re-authorization, network, etc.)
+- **THEN** the controller accepts the new request, returns 201, and persists exactly one live row for the triplet
+
+#### Scenario: Validator auto-purges a pre-existing aborted-create orphan
+- **WHEN** the `restream_targets` table already contains a soft-deleted row for `(user_id=U, channel_id=C, platform=youtube)` whose `stream_key IS NULL AND platform_broadcast_id IS NULL AND status = 'idle'` (an orphan from a previous failed `store()` rollback)
+- **AND** the client posts a new `POST /client/channels/{c}/restream-targets` for the same triplet
+- **THEN** the controller hard-deletes the orphan row, persists the new live row, and returns 201 (no 422 to the client)
+
+#### Scenario: Validator auto-purges ALL aborted orphans even when a legitimate archive also exists
+- **WHEN** the `restream_targets` table contains BOTH a soft-deleted row with `stream_key IS NULL AND platform_broadcast_id IS NULL AND status = 'idle'` (aborted orphan) AND a soft-deleted row with `stream_key` populated (legitimately archived) for the same `(user_id, channel_id, platform)` triplet
+- **AND** the client posts a new `POST /client/channels/{c}/restream-targets` for the same triplet
+- **THEN** the controller hard-deletes the aborted orphan, leaves the archived row intact, and responds 422 with the "archivado" message so the client can choose to restore or force-delete it
+
+#### Scenario: Validator surfaces an actionable error for a user-archived target
+- **WHEN** the `restream_targets` table contains a soft-deleted row for `(user_id=U, channel_id=C, platform=youtube)` with `stream_key` populated (i.e. the user or admin actually configured and then archived it)
+- **AND** the client posts a new `POST /client/channels/{c}/restream-targets` for the same triplet
+- **THEN** the controller responds 422 with message "Ya existe un destino archivado para esta plataforma en este canal. Restáuralo o elimínalo definitivamente para crear uno nuevo."
+- **AND** the existing soft-deleted row remains unchanged (not auto-purged) — it carries credentials and/or a remote broadcast that the user may want to restore
+
+#### Scenario: Validator surfaces an actionable error for an admin-archived target
+- **WHEN** an admin previously called `DELETE /admin/channels/{c}/restream-targets/{t}` on a live target, leaving a soft-deleted row with `stream_key` and `platform_broadcast_id` populated
+- **AND** the target's owner posts a new `POST /client/channels/{c}/restream-targets` for the same triplet
+- **THEN** the controller responds 422 with the same "archivado" message
+- **AND** the soft-deleted row remains intact until the owner (or admin) explicitly restores it via `POST .../restore` or hard-deletes it via `DELETE .../force`
+
+#### Scenario: Parity between client and admin validators
+- **WHEN** the same `(user_id, channel_id, platform)` triplet triggers the validator
+- **THEN** `Client\RestreamTargetController::assertNoDuplicateTriple` and `Admin\RestreamTargetController::assertNoDuplicateTriple` SHALL reach the same outcome for each of the three cases (no existing row → pass; aborted-create orphan → auto-purge + pass; user-archived → 422 with the "archivado" message)
+
+#### Scenario: Operator command purges aborted-create orphans from the live DB
+- **WHEN** an operator runs `php artisan restream:purge-aborted-targets --apply` on a database that contains soft-deleted rows matching the abort signature (`stream_key IS NULL AND platform_broadcast_id IS NULL AND status = 'idle'` — note: `enabled` is intentionally NOT part of the signature because `store()` defaults it to `true`, so most aborted orphans carry `enabled = true`)
+- **THEN** every matching row is removed (hard delete via `forceDelete()`) inside a single `DB::transaction` with row locks
+- **AND** exactly one `audit_logs` row is written with `action='purge_aborted.restream_target'`, `entity_id=null`, `channel_id` = the `--channel` filter if provided (otherwise `null`), and `after={purged_count: N, criteria: {...}, channel_id, purged_ids: [...]}`
+- **AND** running the same command without `--apply` (default dry-run) prints the candidate count and the candidate rows without mutating anything
+- **AND** passing `--json` (with or without `--apply`) emits a structured JSON payload suitable for piping to `jq`
 
 #### Scenario: source_url is optional and nullable
 - **WHEN** a platform-managed or manual target is created without `source_url`
