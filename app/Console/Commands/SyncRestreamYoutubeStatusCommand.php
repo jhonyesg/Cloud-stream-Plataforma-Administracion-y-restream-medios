@@ -40,8 +40,7 @@ class SyncRestreamYoutubeStatusCommand extends Command
             ->whereNotNull('platform_account_id')
             ->where(function ($q) {
                 $q->whereNotNull('pipeline_pid')
-                    ->orWhere('status', 'idle')
-                    ->orWhere('status', 'stopping');
+                    ->orWhere('status', 'idle');
             });
 
         $summary = [

@@ -116,6 +116,38 @@ class RestreamOrchestrator
         // spawn a fresh daemon pointing at the new stream key.
         $this->refreshDeadBroadcast($target, $context);
 
+        // Brand-new target OR a target whose binding was cleared by a reap /
+        // force-close: no `platform_broadcast_id`, so `refreshDeadBroadcast` is
+        // a no-op and `buildConfig` would write a null destination URL.
+        // Create the first broadcast here so the daemon has something real to
+        // push to.
+        if ($target->platform === 'youtube' && ! $target->platform_broadcast_id && $this->youtube) {
+            try {
+                $result = $this->youtube->create($target, $context);
+                $target->forceFill([
+                    'destination_url' => $result['destination_url'],
+                    'stream_key' => $result['stream_key'],
+                    'platform_broadcast_id' => $result['platform_broadcast_id'],
+                ])->save();
+                Log::info('[restream] created initial youtube broadcast for target', [
+                    'target_id' => $target->id,
+                    'broadcast_id' => $result['platform_broadcast_id'],
+                ]);
+            } catch (\Throwable $e) {
+                Log::error('[restream] failed to create initial youtube broadcast', [
+                    'target_id' => $target->id,
+                    'error' => $e->getMessage(),
+                ]);
+                $target->update([
+                    'status' => RestreamTarget::STATUS_ERROR,
+                    'last_error' => 'YouTube broadcast creation failed: ' . $e->getMessage(),
+                    'last_failed_at' => now(),
+                ]);
+
+                throw $e;
+            }
+        }
+
         $config = $this->buildConfig($target);
 
         if ($dryRun) {
