@@ -28,7 +28,9 @@ A "release snapshot" of the full production state is kept at `database/snapshots
 - `php artisan db:export-production-data` — regenerate the release snapshot from the live DB.
 - `php artisan db:list-snapshots` — show all per-migration snapshots on disk.
 - `php artisan db:restore-snapshot <name>` — manually restore from a named snapshot (with confirmation prompt; `--force` to skip).
-- `php artisan check:destructive-migrations` — CI lint; exits non-zero if any migration has destructive `up()` without the trait.
+- `php artisan check:destructive-migrations` — CI lint; exits non-zero if any migration has destructive DDL (`Schema::drop*`, `->dropColumn`) in `up()` without the `WithDataSafetySnapshot` trait.
+- `php artisan check:destructive-migrations --strict-data` — same lint, plus a second pass for **data-level** destruction: `DB::table('x')->truncate()`, `->delete()` (bounded or unbounded), `DB::statement('DELETE FROM…' / 'TRUNCATE TABLE…')`, raw `DELETE FROM` / `TRUNCATE TABLE` in the `up()` body. Migrations using the `WithDataSafetySnapshot` trait + declaring the affected table in `$criticalTables` are accepted. Add this to CI alongside the base lint.
+- `php artisan migrate*` (any of `migrate`, `migrate:fresh`, `migrate:rollback`, `migrate:reset`, `migrate:refresh`, `migrate:safe`) — runs the **strict-data lint** automatically before executing. If the lint fails, the migrate aborts with `[db-safety] php artisan <cmd> aborted: ...`. Pass `--allow-quarantined` to bypass the lint for forensic investigation (this is a Symfony global option registered by `AppServiceProvider::registerMigrateSafetyHook()`).
 
 Snapshots in `database/snapshots/` are **gitignored** — never commit them. They are defense-in-depth alongside `db:backup`.
 
@@ -51,7 +53,8 @@ Snapshots in `database/snapshots/` are **gitignored** — never commit them. The
 - **Rebuild Tailwind bundle:** `npm run build:css` — required after any change to Tailwind classes (`bg-*`, `text-*`, `from-*`, `to-*`, `hover:*`, `grid-cols-*`, etc.) in a Blade template. `tailwind.min.css` is a **static JIT bundle** scoped to `./resources/views/**`; new classes that weren't in the source at the last build are **silently dropped** (the element renders with no background/color). Common symptom: Playwright/Chrome reports `backgroundImage: none` on a button whose class string includes `bg-gradient-to-br from-foo-X to-foo-Y`. Fix: `npm run build:css`. Run this AFTER `view:clear` whenever a view tweak relies on Tailwind classes that don't already exist in `public/css/tailwind.min.css`.
 - **HTML-escape `"` inside `x-data="…"` attributes:** every literal `"` inside an `x-data="…"` HTML attribute ends that attribute prematurely (browser reads the first `"` as the close). This applies to **both** `@json(…)` output AND raw `"` characters inside JS string literals like `confirm('name "' + t.name + '"?')`. Always write them as `&quot;` in the Blade source — the browser decodes them back to `"` for JS, but the HTML attribute survives the round-trip. Symptom of getting this wrong: Alpine logs `Unexpected token ';'` or `Invalid or unexpected token` followed by `accountFor is not defined` / `flash is not defined`. Reference: change `restream-confirm-modals` + `fix-restream-xdata-json-escape` in `openspec/changes/archive/`.
 - **Rebaseline migrations after backup restore:** `php artisan db:mark-migrations-applied <name>…` — records one or more migration files as already applied in the `migrations` ledger WITHOUT running their `up()` bodies. Use when restoring a PostgreSQL dump whose `migrations` table is older than the migration files on disk (e.g. the restream-schedule-schema-repair incident of 2026-09-29). The command refuses to proceed if any of the migration's `Schema::create`/`CREATE TYPE`/`CREATE INDEX` objects do not exist in the live DB; idempotent via `INSERT … ON CONFLICT (migration) DO NOTHING`. Writes one `audit_logs` row with `action='migrations.rebaseline'`.
-- **Sync YouTube lifecycle:** `php artisan restream:sync-youtube-status [--once] [--json]` — polls YouTube's `liveBroadcasts.list?part=status` API for every YouTube restream target with a non-null `platform_broadcast_id` and `pipeline_pid`, persists `platform_broadcast_lifecycle` + `last_youtube_poll_at`. Caps to live targets so idle ones never burn quota. Runs every 30s via `routes/console.php` (skipped when `pipeline_pid IS NULL`). Per-target catch so a single YouTube error never aborts the batch.
+- **Sync YouTube lifecycle:** `php artisan restream:sync-youtube-status [--once] [--json]` — polls YouTube's `liveBroadcasts.list?part=status` API for every YouTube restream target with a non-null `platform_broadcast_id` and `pipeline_pid`, persists `platform_broadcast_lifecycle` + `last_youtube_poll_at`. As of 2026-09-30 also polls idle targets (status idle, no pipeline_pid) that still have a bound broadcast so the `effective_status=zombie-live` badge reflects reality. Runs every 30s via `routes/console.php`. Per-target catch so a single YouTube error never aborts the batch.
+- **Reap YouTube zombies:** `php artisan restream:reap-youtube-zombies [--dry-run]` — every minute, scans idle YouTube targets with a bound broadcast. If YouTube still reports `live/liveStarting/testing`, transitions to `complete` and records `kind=youtube_zombie_detected` + `kind=youtube_zombie_recovered` (or `_recovery_failed` on exception). If YouTube already reports `complete/revoked`, clears `platform_broadcast_id`/`destination_url`/`stream_key` and records `kind=youtube_zombie_recovered` with `metadata.cleaned=true`. Safety net for the orchestrator's `stop()` YouTube transition: catches historical zombies (predates the fix) and any target where the transition failed and was never retried. Idempotent: a second run on a cleaned target yields no candidates.
 
 ## Emission Module — Status: DISMOUNTED (2026-07-20)
 
@@ -229,7 +232,15 @@ log, and a systemd unit per target. The old PHP launcher/supervisor
   via `proc_open`, health-checks at 500ms (422 with the real cause from the
   log if it dies), and stores the daemon PID in `pipeline_pid`. `stop()`
   SIGTERMs the daemon, waits up to 10s for its `offline` heartbeat, then
-  force-kills if needed.
+  force-kills if needed. **As of 2026-09-30, `stop()` ALSO calls
+  `YoutubeBroadcastService::transitionToComplete()`** when the target is
+  YouTube-bound, so the broadcast actually transitions to `complete` on
+  YouTube's side. Without this, `enableAutoStop=false` (intentional, to
+  survive RTMP micro-disconnects) would leave the broadcast in `lifeCycleStatus=live`
+  forever — the "EN DIRECTO para siempre" symptom after a scheduled
+  `ends_at`. Failures are tolerated (log warning + event
+  `kind=youtube_transition_failed`) and retried by the
+  `restream:reap-youtube-zombies` watchdog (every minute).
 - **Daemon self-supervision** (`restream_daemon/main.py`): if the ffmpeg
   child dies, it restarts with exponential backoff (max 5 in 60s, then 30s
   cooldown and heartbeat `error`). A watchdog restarts the child if it is
