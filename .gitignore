@@ -1,5 +1,5 @@
 # Dependencies
-/venv/
+venv/
 .venv/
 __pycache__/
 *.pyc
@@ -21,6 +21,7 @@ __pycache__/
 # Environment
 .env
 .env.local
+.env.bak*
 
 # API reference with test token (msp_pat_...) — never expose publicly
 API.md

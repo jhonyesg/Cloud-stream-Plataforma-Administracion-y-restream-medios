@@ -56,34 +56,56 @@ Snapshots in `database/snapshots/` are **gitignored** — never commit them. The
 - **Sync YouTube lifecycle:** `php artisan restream:sync-youtube-status [--once] [--json]` — polls YouTube's `liveBroadcasts.list?part=status` API for every YouTube restream target with a non-null `platform_broadcast_id` and `pipeline_pid`, persists `platform_broadcast_lifecycle` + `last_youtube_poll_at`. As of 2026-09-30 also polls idle targets (status idle, no pipeline_pid) that still have a bound broadcast so the `effective_status=zombie-live` badge reflects reality. Runs every 30s via `routes/console.php`. Per-target catch so a single YouTube error never aborts the batch.
 - **Reap YouTube zombies:** `php artisan restream:reap-youtube-zombies [--dry-run]` — every minute, scans idle YouTube targets with a bound broadcast. If YouTube still reports `live/liveStarting/testing`, transitions to `complete` and records `kind=youtube_zombie_detected` + `kind=youtube_zombie_recovered` (or `_recovery_failed` on exception). If YouTube already reports `complete/revoked`, clears `platform_broadcast_id`/`destination_url`/`stream_key` and records `kind=youtube_zombie_recovered` with `metadata.cleaned=true`. Safety net for the orchestrator's `stop()` YouTube transition: catches historical zombies (predates the fix) and any target where the transition failed and was never retried. Idempotent: a second run on a cleaned target yields no candidates.
 
-## Emission Module — Status: DISMOUNTED (2026-07-20)
+## Emission Module — Status: ACTIVE (rebuild completed 2026-08/09)
 
-The entire emission/playout engine was **removed** on 2026-07-20 to
-restructure it from scratch. What existed before (GStreamer daemon
-`scripts/playout_gst.py`, `EmisionSupervisor`, `EmisionOrchestrator`,
-`EmisionControlService`, `config/emision.php`, the `emision:start|stop|supervise`
-commands, the `/emision` web routes/views, the systemd supervisor unit) is
-**gone**. Do not look for it; it will be rebuilt clean.
+> **Historic note:** an earlier version of this section declared the emission
+> engine unmounted on 2026-07-20. That is **no longer true**. The engine was
+> rebuilt and has been running in production since late August 2026.
+> **Do not delete `emisor_python/`** — it is the live playout daemon (see
+> below).
 
-### What was KEPT (scaffolding for the re-implementation)
+The playout engine is a Python daemon at `emisor_python/`, launched per
+channel by `App\Services\EmissionOrchestrator` (`proc_open`, PID stored in
+`emission_state.pipeline_pid`). Entry point `emisor_python/main.py` with a
+supervisor loop (restart/backoff), heartbeat every 5s, `[STATS]` logging, and
+per-channel logs at `storage/logs/emission-<channel>.log`.
+
+- **Pipeline:** `emisor_python/pipeline/ffmpeg_pipeline.py` (`FFmpegPipelineManager`)
+  drives an `ffmpeg` child process that pushes the resolved timeline item to
+  the channel's `virtual_screen.output_url` over RTMP. It parses ffmpeg's
+  stderr for `frame=`/`fps=`/`bitrate=` and detects RTMP disconnects for the
+  watchdog.
+- **Removed (do not look for them):** the pre-rebuild GStreamer stack
+  (`gst_pipeline.py`, the `test_redplanet_*` POCs), `EmisionSupervisor`,
+  `EmisionControlService`, `config/emision.php` and the `emision:start|stop|supervise`
+  commands. The first two were deleted in `organize-project-structure`
+  (2026-10-17) as dead code; the rest were removed in the 2026-07-20 teardown.
+- **Laravel side:** `App\Http\Controllers\Api\EmissionController` +
+  `EmissionPositionController` start/stop and report position; the daemon
+  talks back to Laravel's internal API on `127.0.0.1:9090`
+  (`cloudstream-internal.conf`, root `public/`).
+
+### Live state fields (populated by the running engine)
 
 - **`emission_state` table + `App\Models\EmissionState`** — the row of
   state fields per channel (`status`, `current_timeline_item_id`,
   `broadcast_clock_sec`, `content_position_sec`, `mode`, `pipeline_pid`,
-  `overflow_sec`, `timeline_version`, etc.) and its migrations. No engine
-  writes to it right now; it is the data shape the new engine will populate.
+  `overflow_sec`, `timeline_version`, etc.). The daemon writes these while
+  playing.
 - **`App\Models\VirtualScreen`** + `/api/virtual-screens/{channelId}`
   (show/update/test-preview) + `<x-virtual-screen-editor-modal>` — the output
   configuration of a channel (resolution, codecs, bitrate, output_url, logo,
   fallback). Edited from the **Channels** view (button "Pantalla"), not from a
-  dedicated emission module.
+  dedicated emission module. The orchestrator serializes it into the daemon's
+  startup config JSON.
 - **`program_timeline_items` + `App\Models\ProgramTimelineItem`** — the
   per-(template, day) 00:00-24:00 timeline. Built/mutated by the scheduler
   services below.
 - **Timeline services** `App\Services\TimelineBuilder`,
   `TimelineMutator`, `ScheduledPlaylistResolver`,
   `ScheduledPositionCalculator`, `PlaylistDurationService`,
-  `EmisionStartExceptionFactory` — used by the scheduler/Timeline API.
+  `EmisionStartExceptionFactory` — used by the scheduler/Timeline API and by
+  `EmissionOrchestrator::start()` to resolve the item to play.
 - **The "lock"** — the status-based start guard
   (`emission_state.status ∈ {starting, live}` ⇒ refuse double start) lives in
   the `EmissionState` model/contracts; no `Cache::lock` mutex exists.
