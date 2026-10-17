@@ -30,6 +30,13 @@ Schedule::command('restream:reap-dead-broadcasts')->everyMinute()->name('restrea
 // with the daemon's current state. Idempotent + lock-protected.
 Schedule::command('restream:run-target-schedules')->everyMinute()->withoutOverlapping()->name('restream-run-target-schedules');
 
+// Safety net for the "zombie live on YouTube" symptom: targets whose local
+// state is idle but whose bound YouTube broadcast is still live (the previous
+// stop() never transitioned it). Closes the broadcast and clears the local
+// binding. Runs every minute, after the schedule engine so that the two never
+// fight over the same target inside the same minute.
+Schedule::command('restream:reap-youtube-zombies')->everyMinute()->name('restream-reap-youtube-zombies');
+
 // Prune append-only event history. Default 90d, override with TARGET_EVENTS_RETENTION_DAYS.
 Schedule::command('restream:prune-target-events')->daily()->name('restream-prune-target-events');
 

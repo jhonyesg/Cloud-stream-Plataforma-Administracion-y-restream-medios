@@ -26,6 +26,8 @@ class RestreamStatusResolver
 
     public const YT_TEST_STARTING = 'yt-test-starting';
 
+    public const ZOMBIE_LIVE = 'zombie-live';
+
     public const UNKNOWN = 'unknown';
 
     /**
@@ -62,6 +64,10 @@ class RestreamStatusResolver
             return self::YT_NO_DATA;
         }
 
+        if (! $pid && in_array($lifecycle, ['live', 'liveStarting', 'testing'], true)) {
+            return self::ZOMBIE_LIVE;
+        }
+
         if ($target->last_error && ! $pid) {
             return self::ERROR;
         }
@@ -89,6 +95,7 @@ class RestreamStatusResolver
             self::YT_NO_DATA => 'Daemon activo, YouTube sin datos',
             self::YT_REVOKED => 'YouTube dice "revocado"',
             self::YT_TEST_STARTING => 'YouTube iniciando prueba',
+            self::ZOMBIE_LIVE => 'Sigue en YouTube aunque inactivo aquí',
             default => 'Desconocido',
         };
     }
@@ -104,6 +111,7 @@ class RestreamStatusResolver
             self::YT_NO_DATA => 'bg-amber-100 text-amber-800',
             self::YT_REVOKED => 'bg-red-100 text-red-800',
             self::YT_TEST_STARTING => 'bg-amber-100 text-amber-800',
+            self::ZOMBIE_LIVE => 'bg-red-100 text-red-800',
             default => 'bg-gray-100 text-gray-700',
         };
     }
@@ -119,6 +127,7 @@ class RestreamStatusResolver
             self::YT_NO_DATA => 'bg-amber-500',
             self::YT_REVOKED => 'bg-red-500',
             self::YT_TEST_STARTING => 'bg-amber-500',
+            self::ZOMBIE_LIVE => 'bg-red-500 animate-pulse',
             default => 'bg-gray-400',
         };
     }

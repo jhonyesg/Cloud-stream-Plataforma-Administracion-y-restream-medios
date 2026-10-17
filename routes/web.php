@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Admin\DashboardController as AdminDashboardController;
 use App\Http\Controllers\Admin\MediaController as AdminMediaController;
+use App\Http\Controllers\Admin\RestreamPlatformAccountController as AdminRestreamPlatformAccountController;
 use App\Http\Controllers\Admin\RestreamQuotaController;
 use App\Http\Controllers\Admin\RestreamTargetController as AdminRestreamTargetController;
 use App\Http\Controllers\Admin\ScheduleController;
@@ -47,6 +48,8 @@ Route::get('/blog/como-empezar-a-transmitir-tu-canal-en-5-minutos', [PublicSeoCo
 
 Route::get('/preguntas-frecuentes', [PublicSeoController::class, 'faq'])->name('public.faq');
 Route::get('/sobre-nosotros', [PublicSeoController::class, 'about'])->name('public.about');
+Route::get('/politica-de-privacidad', [PublicSeoController::class, 'privacy'])->name('public.privacy');
+Route::get('/terminos-y-condiciones', [PublicSeoController::class, 'terms'])->name('public.terms');
 
 Route::get('/dashboard', [RedirectController::class, 'dashboard'])
     ->middleware(['auth', 'verified'])
@@ -79,14 +82,23 @@ Route::middleware(['auth', 'role:admin'])->prefix('admin')->name('admin.')->grou
 
     Route::prefix('restream')->name('restream.')->group(function () {
         Route::get('/', [AdminRestreamTargetController::class, 'index'])->name('index');
+        Route::get('/accounts', [AdminRestreamPlatformAccountController::class, 'index'])->name('accounts.index');
+        Route::get('/users/{user}/restream-accounts/{platform}/connect', [AdminRestreamPlatformAccountController::class, 'connect'])->name('accounts.connect');
+        Route::delete('/users/{user}/restream-accounts/{platform}', [AdminRestreamPlatformAccountController::class, 'destroy'])->name('accounts.destroy');
         Route::post('/channels/{channel}/restream-targets', [AdminRestreamTargetController::class, 'store'])->name('store');
         Route::get('/channels/{channel}/restream-targets/{target}', [AdminRestreamTargetController::class, 'show'])->name('show');
         Route::patch('/channels/{channel}/restream-targets/{target}', [AdminRestreamTargetController::class, 'update'])->name('update');
         Route::delete('/channels/{channel}/restream-targets/{target}', [AdminRestreamTargetController::class, 'destroy'])->name('destroy');
+        Route::delete('/channels/{channel}/restream-targets/{target}/force', [AdminRestreamTargetController::class, 'forceDestroy'])->name('force-destroy');
         Route::post('/channels/{channel}/restream-targets/{target}/start', [AdminRestreamTargetController::class, 'start'])->name('start');
         Route::post('/channels/{channel}/restream-targets/{target}/stop', [AdminRestreamTargetController::class, 'stop'])->name('stop');
+        Route::post('/channels/{channel}/restream-targets/{target}/deactivate', [AdminRestreamTargetController::class, 'deactivate'])->name('deactivate');
+        Route::post('/channels/{channel}/restream-targets/{target}/restore', [AdminRestreamTargetController::class, 'restore'])->name('restore');
+        Route::post('/channels/{channel}/restream-targets/{target}/force-close-youtube', [AdminRestreamTargetController::class, 'forceCloseYoutube'])->name('force-close-youtube');
         Route::get('/channels/{channel}/restream-targets/{target}/log', [AdminRestreamTargetController::class, 'log'])->name('log');
     });
+
+    Route::get('/restream-accounts/{platform}/callback', [AdminRestreamPlatformAccountController::class, 'callback'])->name('restream.accounts.callback');
 
     Route::get('/channels', [AdminDashboardController::class, 'channels'])->name('channels');
     Route::get('/channels/{channel}', [AdminDashboardController::class, 'channelShow'])->name('channels.show');
@@ -120,10 +132,37 @@ Route::middleware(['auth', 'role:client'])->prefix('client')->name('client.')->g
         Route::get('/channels/{channel}/restream-targets/{target}', [RestreamTargetController::class, 'show'])->name('channels.show');
         Route::patch('/channels/{channel}/restream-targets/{target}', [RestreamTargetController::class, 'update'])->name('channels.update');
         Route::delete('/channels/{channel}/restream-targets/{target}', [RestreamTargetController::class, 'destroy'])->name('channels.destroy');
+        Route::delete('/channels/{channel}/restream-targets/{target}/force', [RestreamTargetController::class, 'forceDestroy'])->name('channels.force-destroy');
         Route::post('/channels/{channel}/restream-targets/{target}/start', [RestreamTargetController::class, 'start'])->name('channels.start');
         Route::post('/channels/{channel}/restream-targets/{target}/stop', [RestreamTargetController::class, 'stop'])->name('channels.stop');
+        Route::post('/channels/{channel}/restream-targets/{target}/deactivate', [RestreamTargetController::class, 'deactivate'])->name('channels.deactivate');
+        Route::post('/channels/{channel}/restream-targets/{target}/restore', [RestreamTargetController::class, 'restore'])->name('channels.restore');
+        Route::post('/channels/{channel}/restream-targets/{target}/force-close-youtube', [RestreamTargetController::class, 'forceCloseYoutube'])->name('channels.force-close-youtube');
+        Route::post('/channels/{channel}/restream-targets/{target}/clean-broadcast', [RestreamTargetController::class, 'cleanBroadcast'])->name('channels.clean-broadcast');
         Route::get('/channels/{channel}/restream-targets/{target}/log', [RestreamTargetController::class, 'log'])->name('channels.log');
+
+        // Per-target scheduling (restream-target-scheduler change).
+        // NOTE: literal `/schedules/calendar` and `/events/history` MUST be
+        // declared BEFORE the wildcard `/schedules/{schedule}` route so that
+        // Laravel does not capture "calendar" as a schedule id.
+        Route::get('/restream-targets/{target}/schedules/calendar', [\App\Http\Controllers\Client\RestreamTargetScheduleController::class, 'index'])->name('schedules.calendar');
+        Route::get('/restream-targets/{target}/events/history', [\App\Http\Controllers\Client\RestreamTargetScheduleController::class, 'events'])->name('events.history');
+
+        Route::get('/restream-targets/{target}/schedules', [\App\Http\Controllers\Api\RestreamTargetScheduleController::class, 'index'])->name('schedules.index');
+        Route::post('/restream-targets/{target}/schedules', [\App\Http\Controllers\Api\RestreamTargetScheduleController::class, 'store'])->name('schedules.store');
+        Route::get('/restream-targets/{target}/schedules/{schedule}', [\App\Http\Controllers\Api\RestreamTargetScheduleController::class, 'show'])->name('schedules.show');
+        Route::patch('/restream-targets/{target}/schedules/{schedule}', [\App\Http\Controllers\Api\RestreamTargetScheduleController::class, 'update'])->name('schedules.update');
+        Route::delete('/restream-targets/{target}/schedules/{schedule}', [\App\Http\Controllers\Api\RestreamTargetScheduleController::class, 'destroy'])->name('schedules.destroy');
+        Route::post('/restream-targets/{target}/schedules/{schedule}/trigger-now', [\App\Http\Controllers\Api\RestreamTargetScheduleController::class, 'triggerNow'])->name('schedules.trigger-now');
+        Route::post('/restream-targets/{target}/schedules/{schedule}/stop-now', [\App\Http\Controllers\Api\RestreamTargetScheduleController::class, 'stopNow'])->name('schedules.stop-now');
+        Route::get('/restream-targets/{target}/events', [\App\Http\Controllers\Api\RestreamTargetEventController::class, 'index'])->name('events.index');
+        Route::get('/restream-targets/{target}/events/{event}', [\App\Http\Controllers\Api\RestreamTargetEventController::class, 'show'])->name('events.show');
     });
+});
+
+Route::middleware(['auth', 'auth.admin'])->prefix('admin')->name('admin.')->group(function () {
+    Route::get('/channels/{channel}/restream-targets/{target}/schedules', [\App\Http\Controllers\Admin\RestreamTargetScheduleController::class, 'index'])->name('restream.schedules');
+    Route::get('/channels/{channel}/restream-targets/{target}/events', [\App\Http\Controllers\Admin\RestreamTargetScheduleController::class, 'events'])->name('restream.events');
 });
 
 require __DIR__.'/auth.php';

@@ -118,6 +118,27 @@
                     successEvent: 'restream-targets-changed',
                 });
             },
+            async askForceCloseYoutube(t) {
+                if (!confirm('¿Forzar el cierre del broadcast zombie en YouTube (ID ' + (t.platform_broadcast_id || '?') + ')? Esto transiciona el broadcast a `complete` y limpia el binding local.')) return;
+                try {
+                    this.flash = 'Cerrando broadcast zombie en YouTube...'; this.flashKind = 'ok';
+                    const url = window.restreamUrls.admin.forceCloseYoutube.replace('CID', t.channel_id).replace('TID', t.id);
+                    const r = await fetch(url, {
+                        method: 'POST',
+                        headers: { 'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]')?.content || '', 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                    });
+                    const data = await r.json().catch(() => ({}));
+                    if (r.ok) {
+                        this.flash = data.message || 'Broadcast zombie cerrado.';
+                        this.flashKind = data.ok ? 'ok' : 'warning';
+                    } else {
+                        this.flash = data.message || 'Error al forzar el cierre';
+                        this.flashKind = 'error';
+                    }
+                    setTimeout(() => this.flash = '', 5000);
+                } catch (e) { this.flash = String(e); this.flashKind = 'error'; }
+                window.dispatchEvent(new CustomEvent('restream-targets-changed'));
+            },
             init() {
                 window.addEventListener('restream-targets-changed', async () => {
                     await this.refresh();
@@ -506,6 +527,10 @@
                                         </button>
                                         <button type="button" @click="askInactivate(t)" x-show="t.enabled" title="Inactivar (libera el slot, conserva la configuración)" class="inline-flex items-center px-2.5 py-1 text-xs font-semibold rounded bg-gradient-to-br from-slate-400 to-slate-600 text-white shadow-sm hover:from-slate-500 hover:to-slate-700">
                                             Inactivar
+                                        </button>
+                                        <button type="button" @click="askForceCloseYoutube(t)" x-show="t._effectiveStatus === 'zombie-live'" title="Forzar cierre del broadcast zombie en YouTube y limpiar el binding local" class="inline-flex items-center px-2.5 py-1 text-xs font-semibold rounded bg-gradient-to-br from-red-500 to-red-700 text-white shadow-sm hover:from-red-600 hover:to-red-800 border border-red-300">
+                                            <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                                            Forzar cierre YouTube
                                         </button>
                                     </div>
                                 </td>

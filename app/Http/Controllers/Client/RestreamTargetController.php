@@ -121,7 +121,7 @@ $data = $request->validate([
             throw ValidationException::withMessages(['restream' => $e->getMessage()]);
         } catch (RestreamPlatformAccountException $e) {
             if (isset($target)) {
-                $target->delete();
+                $target->forceDelete();
             }
             throw ValidationException::withMessages(['restream' => $e->getMessage()]);
         }
@@ -240,6 +240,12 @@ $data = $request->validate([
      * Pre-check the (user_id, channel_id, platform) triplet — including soft-deleted
      * rows — so duplicates surface as a 422 with an actionable message instead of
      * a 500 from the partial unique index.
+     *
+     * Aborted creates (soft-deleted rows that never had credentials or a remote
+     * broadcast, e.g. leftovers from a failed `store()` rollback) are auto-purged
+     * so the retry can proceed. Truly archived targets (with `stream_key` and/or
+     * `platform_broadcast_id`) are surfaced as a 422 with a restore-or-force-delete
+     * hint so the operator can decide.
      */
     protected function assertNoDuplicateTriple(int|string $userId, int|string $channelId, ?string $platform, ?string $platformAccountId = null): void
     {
@@ -247,19 +253,58 @@ $data = $request->validate([
             return;
         }
 
+        // Step 1: auto-purge every aborted-create orphan matching the triplet.
+        // Doing this first means the user's retry is unblocked even if there is
+        // also a legitimately archived row for the same triplet (which we still
+        // surface as a 422 below).
+        RestreamTarget::withTrashed()
+            ->where('user_id', $userId)
+            ->where('channel_id', $channelId)
+            ->where('platform', $platform)
+            ->get()
+            ->filter(fn (RestreamTarget $t) => $this->isAbortedOrphan($t))
+            ->each(fn (RestreamTarget $t) => $t->forceDelete());
+
+        // Step 2: re-query (trashed only — live rows are checked separately) and
+        // surface the actionable error for a user-archived target, or the
+        // generic "ya tienes un destino activo" if a live one survives.
         $existing = RestreamTarget::withTrashed()
             ->where('user_id', $userId)
             ->where('channel_id', $channelId)
             ->where('platform', $platform)
             ->first();
 
-        if ($existing) {
-            $message = $existing->trashed()
-                ? 'Ya existe un destino eliminado para esta plataforma en este canal. Restáuralo o elimínalo definitivamente para crear uno nuevo.'
-                : 'Ya tienes un destino activo para esta plataforma en este canal.';
-
-            throw ValidationException::withMessages(['restream' => $message]);
+        if (! $existing) {
+            return;
         }
+
+        if ($existing->trashed()) {
+            throw ValidationException::withMessages([
+                'restream' => 'Ya existe un destino archivado para esta plataforma en este canal. Restáuralo o elimínalo definitivamente para crear uno nuevo.',
+            ]);
+        }
+
+        throw ValidationException::withMessages([
+            'restream' => 'Ya tienes un destino activo para esta plataforma en este canal.',
+        ]);
+    }
+
+    /**
+     * Signature of a row that was rolled back during a failed `store()` and never
+     * had a chance to be configured: no stream key, no remote broadcast, still idle.
+     * Safe to auto-purge before re-creating.
+     *
+     * Note: `enabled` is intentionally NOT part of the signature. The store() flow
+     * defaults `enabled = true` for the user (see line 83), so an aborted-create
+     * orphan typically carries `enabled = true`, not false. The decisive signal
+     * is "never had real data attached" (stream_key + platform_broadcast_id).
+     */
+    protected function isAbortedOrphan(RestreamTarget $target): bool
+    {
+        return $target->trashed()
+            && $target->stream_key === null
+            && $target->platform_broadcast_id === null
+            && $target->status === RestreamTarget::STATUS_IDLE;
     }
 
     protected function resolvePlatformAccount($user, ?string $platform, ?string $platformAccountId): ?RestreamPlatformAccount
@@ -576,6 +621,78 @@ $data = $request->validate([
 
         return response()->json([
             'message' => "Broadcast {$deletedBroadcast} borrado de YouTube. El destino sigue activo; la próxima vez que lo enciendas se creará uno nuevo.",
+            'target' => $target->fresh(),
+        ]);
+    }
+
+    /**
+     * Operator escape hatch for the "zombie live" symptom: force-close the
+     * bound YouTube broadcast and clear the local binding so the next start()
+     * creates a fresh broadcast. Differs from cleanBroadcast() in that it
+     * also tries the YouTube `liveBroadcasts/transition` endpoint first, so
+     * the operator doesn't have to wonder whether the broadcast is still
+     * "EN DIRECTO" on YouTube Studio.
+     */
+    public function forceCloseYoutube(Request $request, Channel $channel, RestreamTarget $target): JsonResponse
+    {
+        $user = $request->user();
+        abort_unless($user->canAccessChannel($channel), 403, 'No tienes acceso a este canal.');
+        abort_unless($target->user_id === $user->id && $target->channel_id === $channel->id, 403, 'Destino no pertenece a este canal.');
+
+        if ($target->platform !== 'youtube') {
+            return response()->json([
+                'ok' => false,
+                'message' => 'Este destino no es YouTube; no hay broadcast que cerrar.',
+            ], 422);
+        }
+
+        if ($target->pipeline_pid) {
+            try {
+                $this->orchestrator->stop($target);
+            } catch (\Throwable $e) {
+                // best-effort: we still want to clean the binding even if the
+                // daemon refused to die.
+            }
+        }
+
+        $target->refresh();
+        if (! $target->platform_broadcast_id) {
+            return response()->json([
+                'ok' => true,
+                'message' => 'No había broadcast de YouTube vinculado. El destino ya estaba limpio.',
+                'target' => $target,
+            ]);
+        }
+
+        $before = [
+            'platform_broadcast_id' => $target->platform_broadcast_id,
+            'status' => $target->status,
+        ];
+
+        $ok = false;
+        try {
+            $ok = $this->youtube->forceCleanBroadcast($target);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'ok' => false,
+                'message' => 'No se pudo limpiar el broadcast: ' . $e->getMessage(),
+            ], 502);
+        }
+
+        AuditLog::record(
+            action: 'force_close.restream_target',
+            entityType: 'restream_target',
+            entityId: $target->id,
+            before: $before,
+            after: ['platform_broadcast_id' => null],
+            channelId: $channel->id,
+        );
+
+        return response()->json([
+            'ok' => $ok,
+            'message' => $ok
+                ? 'Broadcast de YouTube cerrado y binding limpiado.'
+                : 'No se pudo cerrar el broadcast en YouTube; el binding local no fue modificado.',
             'target' => $target->fresh(),
         ]);
     }

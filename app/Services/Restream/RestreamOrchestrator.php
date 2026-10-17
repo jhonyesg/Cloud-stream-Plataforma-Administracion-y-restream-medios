@@ -3,9 +3,11 @@
 namespace App\Services\Restream;
 
 use App\Models\RestreamTarget;
+use App\Services\Restream\Platform\YoutubeBroadcastService;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
+use Throwable;
 
 class RestreamOrchestrator
 {
@@ -19,8 +21,11 @@ class RestreamOrchestrator
 
     private string $ffmpegBin;
 
-    public function __construct(?string $ffmpegBin = null)
-    {
+    public function __construct(
+        ?string $ffmpegBin = null,
+        private readonly ?YoutubeBroadcastService $youtube = null,
+        private readonly ?TargetSchedulerService $scheduler = null,
+    ) {
         $bin = $ffmpegBin ?? (string) env('FFMPEG_BIN', 'ffmpeg');
         $resolved = $this->resolveBinary($bin);
         if ($resolved === null) {
@@ -92,14 +97,55 @@ class RestreamOrchestrator
     /**
      * Write the config file and spawn the Python daemon for a target.
      *
+     * @param  array<string, mixed>  $context  Per-call overrides that take
+     *                                            precedence over the target's own
+     *                                            fields when creating platform
+     *                                            broadcasts. Supported keys:
+     *                                            title, description, thumbnail_path,
+     *                                            thumbnail_media_id.
      * @return array{pid: int, status: string}
      */
-    public function start(RestreamTarget $target, bool $dryRun = false): array
+    public function start(RestreamTarget $target, bool $dryRun = false, array $context = []): array
     {
+        // YouTube broadcasts are single-use: once the broadcast transitions to
+        // `complete` (which `enableAutoStop=true` does on the first RTMP
+        // disconnect) the bound stream key is dead. FFmpeg can still hold the
+        // TCP socket, but YouTube marks the stream `noData` and the broadcast
+        // never shows up on the channel. Detect this BEFORE the idempotency
+        // check so we stop the stale daemon, recreate the broadcast, and
+        // spawn a fresh daemon pointing at the new stream key.
+        $this->refreshDeadBroadcast($target, $context);
+
         $config = $this->buildConfig($target);
 
         if ($dryRun) {
             return ['pid' => 0, 'status' => RestreamTarget::STATUS_STARTING, 'config' => $config];
+        }
+
+        // Idempotency check: if a daemon for this target is already running
+        // (verified via /proc cmdline to avoid PID-reuse false positives),
+        // skip the spawn. Without this, multiple cron workers or restarts
+        // can accumulate duplicate daemons pushing the same stream.
+        if ($target->pipeline_pid && function_exists('posix_kill')) {
+            $existingPid = (int) $target->pipeline_pid;
+            if (@posix_kill($existingPid, 0)) {
+                $cmdlineFile = "/proc/{$existingPid}/cmdline";
+                $cmdline = @file_get_contents($cmdlineFile);
+                if ($cmdline !== false) {
+                    $cmdline = str_replace("\0", ' ', $cmdline);
+                    $expected = "restream_daemon/main.py --target-id={$target->id}";
+                    if (str_contains($cmdline, $expected)) {
+                        Log::info('[restream] daemon already running, skipping spawn', [
+                            'target_id' => $target->id,
+                            'pid' => $existingPid,
+                        ]);
+                        return ['pid' => $existingPid, 'status' => RestreamTarget::STATUS_ACTIVE];
+                    }
+                }
+            }
+            // Stale PID (process gone or PID reused by another process): clear it
+            // so spawnDaemon can claim a fresh slot.
+            $target->update(['pipeline_pid' => null]);
         }
 
         $configPath = $this->writeConfig($target->id, $config);
@@ -166,6 +212,25 @@ class RestreamOrchestrator
             usleep(200_000);
         }
 
+        // Transition the bound YouTube broadcast to `complete` before we clear
+        // the local binding. Without this, broadcasts created with
+        // `enableAutoStop=false` stay in `lifeCycleStatus=live` on YouTube's
+        // side indefinitely (the "EN DIRECTO para siempre" symptom reported
+        // when a scheduled window reaches its ends_at).
+        $youtubeTransitionOk = null;
+        if ($this->youtube && $target->platform === 'youtube' && $target->platform_broadcast_id) {
+            try {
+                $youtubeTransitionOk = $this->youtube->transitionToComplete($target);
+            } catch (Throwable $e) {
+                $youtubeTransitionOk = false;
+                Log::warning('[restream] orchestrator stop: youtube transition threw', [
+                    'target_id' => $target->id,
+                    'broadcast_id' => $target->platform_broadcast_id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
         $target->update([
             'pipeline_pid' => null,
             'last_stopped_at' => now(),
@@ -173,11 +238,138 @@ class RestreamOrchestrator
             'last_error' => null,
         ]);
 
+        if ($target->platform === 'youtube' && $target->platform_broadcast_id && $this->scheduler) {
+            try {
+                $kind = $youtubeTransitionOk === true
+                    ? \App\Enums\RestreamTargetEventKind::YOUTUBE_TRANSITION_SUCCEEDED
+                    : \App\Enums\RestreamTargetEventKind::YOUTUBE_TRANSITION_FAILED;
+                $this->scheduler->recordEvent($target, $kind, [
+                    'broadcast_id' => $target->platform_broadcast_id,
+                    'via' => 'orchestrator_stop',
+                ]);
+            } catch (Throwable $e) {
+                Log::warning('[restream] orchestrator stop: failed to record youtube transition event', [
+                    'target_id' => $target->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
         Log::info('[restream] stopped', [
             'target_id' => $target->id,
             'platform' => $target->platform,
             'previous_pid' => $pid,
+            'youtube_transition' => $youtubeTransitionOk,
         ]);
+    }
+
+    /**
+     * YouTube broadcasts are single-use: once they transition to `complete`
+     * (which `enableAutoStop=true` triggers on the first RTMP disconnect) the
+     * bound stream key is dead. FFmpeg can still hold the TCP socket but
+     * YouTube marks the stream `noData` and the broadcast never shows up.
+     *
+     * Detect that state before start(), stop the stale daemon pointing at
+     * the dead broadcast, create a fresh broadcast, persist the new
+     * `destination_url` / `stream_key` / `platform_broadcast_id`, and return
+     * so `start()` proceeds normally with the new stream key.
+     *
+     * No-op for non-YouTube targets, targets without a bound broadcast, or
+     * broadcasts that are still alive. Returns true if a recreation happened
+     * (caller should not assume the previous daemon is still alive).
+     */
+    private function refreshDeadBroadcast(RestreamTarget $target, array $context = []): bool
+    {
+        if (! $this->youtube || $target->platform !== 'youtube') {
+            return false;
+        }
+
+        if (! $target->platform_broadcast_id || ! $target->platformAccount) {
+            return false;
+        }
+
+        try {
+            $consumed = $this->youtube->isBroadcastConsumed($target);
+        } catch (\Throwable $e) {
+            Log::warning('[restream] could not check youtube broadcast state, skipping refresh', [
+                'target_id' => $target->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return false;
+        }
+
+        if (! $consumed) {
+            // El broadcast sigue vivo. Si el cliente cambió título/privacidad/etc
+            // para esta emisión, propagamos los cambios al broadcast existente
+            // en vez de crear uno nuevo (que acumularía basura en YouTube Studio).
+            $this->youtube->updateMetadata($target, $context);
+
+            return false;
+        }
+
+        $oldBroadcast = $target->platform_broadcast_id;
+
+        // Stop the daemon currently sending to the dead stream key. Without
+        // this, the daemon and its FFmpeg child would keep writing to a
+        // stream YouTube has already discarded.
+        if ($target->pipeline_pid && function_exists('posix_kill') && @posix_kill((int) $target->pipeline_pid, 0)) {
+            Log::info('[restream] stopping stale daemon before recreating youtube broadcast', [
+                'target_id' => $target->id,
+                'stale_pid' => $target->pipeline_pid,
+                'dead_broadcast' => $oldBroadcast,
+            ]);
+            $this->stop($target);
+        }
+
+        // Limpia el broadcast anterior de YouTube para no acumular
+        // "El Reporte" viejos en el Studio del cliente.
+        if ($target->platformAccount) {
+            try {
+                $this->youtube->delete($target->platformAccount, $oldBroadcast);
+                Log::info('[restream] deleted previous youtube broadcast', [
+                    'target_id' => $target->id,
+                    'deleted_broadcast' => $oldBroadcast,
+                ]);
+            } catch (\Throwable $e) {
+                Log::warning('[restream] could not delete previous youtube broadcast (continuing)', [
+                    'target_id' => $target->id,
+                    'broadcast' => $oldBroadcast,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        try {
+            $result = $this->youtube->create($target, $context);
+        } catch (\Throwable $e) {
+            Log::error('[restream] failed to recreate youtube broadcast', [
+                'target_id' => $target->id,
+                'old_broadcast' => $oldBroadcast,
+                'error' => $e->getMessage(),
+            ]);
+            $target->update([
+                'status' => RestreamTarget::STATUS_ERROR,
+                'last_error' => 'YouTube broadcast terminado y no se pudo recrear: ' . $e->getMessage(),
+                'last_failed_at' => now(),
+            ]);
+
+            return false;
+        }
+
+        $target->forceFill([
+            'destination_url' => $result['destination_url'],
+            'stream_key' => $result['stream_key'],
+            'platform_broadcast_id' => $result['platform_broadcast_id'],
+        ])->save();
+
+        Log::info('[restream] recreated youtube broadcast', [
+            'target_id' => $target->id,
+            'old_broadcast' => $oldBroadcast,
+            'new_broadcast' => $result['platform_broadcast_id'],
+        ]);
+
+        return true;
     }
 
     private function writeConfig(string $targetId, array $config): string

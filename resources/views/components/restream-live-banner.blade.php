@@ -23,7 +23,7 @@
                         }
                     },
                     get active() {
-                        return this.targets.filter((t) => t.effective_status === 'live' || t.effective_status === 'yt-no-data' || t.effective_status === 'yt-test-starting');
+                        return this.targets.filter((t) => t.effective_status === 'live' || t.effective_status === 'yt-no-data' || t.effective_status === 'yt-test-starting' || t.effective_status === 'zombie-live');
                     },
                     labelFor(status) {
                         return {

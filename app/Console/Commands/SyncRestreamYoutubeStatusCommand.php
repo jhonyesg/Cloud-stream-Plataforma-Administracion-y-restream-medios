@@ -13,7 +13,19 @@ class SyncRestreamYoutubeStatusCommand extends Command
                             {--once : Run a single pass and exit (useful for tests and ops)}
                             {--json : Emit a structured JSON summary instead of human output}';
 
-    protected $description = 'Poll YouTube Live Streaming API for every YouTube restream target that has an active daemon and persist the lifeCycleStatus to the target row. Catches errors per target and continues.';
+    /**
+     * Poll YouTube Live Streaming API for every YouTube restream target that
+     * has an active daemon and persist the lifeCycleStatus to the target row.
+     * Catches errors per target and continues.
+     *
+     * As of 2026-09-30, this also polls idle targets that have a bound
+     * `platform_broadcast_id`. Those are the targets that stopped locally but
+     * whose YouTube broadcast was never transitioned to `complete` (the
+     * "zombie live" symptom). Polling them keeps `platform_broadcast_lifecycle`
+     * fresh so the `RestreamStatusResolver` can flip `effective_status` to
+     * `zombie-live` and the UI badge can prompt the operator to act.
+     */
+    protected $description = 'Poll YouTube Live Streaming API for every YouTube restream target (active or zombie-bound) and persist lifeCycleStatus.';
 
     public function handle(): int
     {
@@ -25,7 +37,12 @@ class SyncRestreamYoutubeStatusCommand extends Command
         $query = RestreamTarget::query()
             ->where('platform', 'youtube')
             ->whereNotNull('platform_broadcast_id')
-            ->whereNotNull('pipeline_pid');
+            ->whereNotNull('platform_account_id')
+            ->where(function ($q) {
+                $q->whereNotNull('pipeline_pid')
+                    ->orWhere('status', 'idle')
+                    ->orWhere('status', 'stopping');
+            });
 
         $summary = [
             'scanned' => 0,
