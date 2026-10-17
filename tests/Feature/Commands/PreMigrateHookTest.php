@@ -4,7 +4,6 @@ namespace Tests\Feature\Commands;
 
 use App\Providers\AppServiceProvider;
 use Illuminate\Console\Events\CommandStarting;
-use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Log;
 use PHPUnit\Framework\Attributes\Test;
 use RuntimeException;
@@ -12,6 +11,18 @@ use Symfony\Component\Console\Input\ArgvInput;
 use Symfony\Component\Console\Output\BufferedOutput;
 use Tests\TestCase;
 
+/**
+ * Integration tests for the pre-migrate safety hook in AppServiceProvider.
+ *
+ * The hook reads from `database/migrations/` by default. To avoid
+ * polluting the production tree with test fixtures, these tests use a
+ * tmp directory and a TmpAppServiceProvider subclass that overrides
+ * callLintCommand() to point the lint at the tmp dir.
+ *
+ * If any test fails before tearDown runs (assertion error, OOM, signal),
+ * the tmp dir is auto-cleaned by PHPUnit's process isolation OR by
+ * `/tmp` reaping. There is NEVER a fixture left in `database/migrations/`.
+ */
 class PreMigrateHookTest extends TestCase
 {
     private string $tmpMigrationsDir;
@@ -21,7 +32,7 @@ class PreMigrateHookTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->tmpMigrationsDir = sys_get_temp_dir() . '/cloudstream-mighook-' . uniqid();
+        $this->tmpMigrationsDir = sys_get_temp_dir() . '/cloudstream-mighook-' . uniqid('', true);
         mkdir($this->tmpMigrationsDir, 0755, true);
     }
 
@@ -34,16 +45,9 @@ class PreMigrateHookTest extends TestCase
         parent::tearDown();
     }
 
-    /**
-     * Write a fixture migration into the project's database/migrations dir
-     * (we use the project dir directly because the lint is hardcoded to
-     * read from there; the AppServiceProvider cannot be reconfigured at
-     * runtime without making it env-driven, which is over-engineering for
-     * a defensive check). The fixture is deleted in tearDown.
-     */
     private function writeFixture(string $name, string $body): string
     {
-        $path = database_path('migrations/' . $name);
+        $path = $this->tmpMigrationsDir . '/' . $name;
         file_put_contents($path, $this->buildMigrationContents($body));
         $this->createdFixtures[] = $path;
 
@@ -63,11 +67,6 @@ class PreMigrateHookTest extends TestCase
             ."};\n";
     }
 
-    /**
-     * Build a CommandStarting event with the given command + options. The
-     * ArgvInput uses the real command name as argv[0] (Symfony convention)
-     * and accepts --allow-quarantined / --pretend / etc. just like the CLI.
-     */
     private function makeEvent(string $command, array $argv = []): CommandStarting
     {
         $input = new ArgvInput(array_merge([$command], $argv));
@@ -76,16 +75,14 @@ class PreMigrateHookTest extends TestCase
         return new CommandStarting($command, $input, $output);
     }
 
-    private function appProvider(): AppServiceProvider
+    /**
+     * Return an AppServiceProvider instance that points the lint at the
+     * test's tmp directory. This is the only way to drive the hook
+     * without writing to database/migrations/.
+     */
+    private function appProviderForTmpDir(): AppServiceProvider
     {
-        // ServiceProvider::__construct takes the container as a required
-        // argument, but Laravel's auto-wiring only kicks in for classes
-        // registered via $this->app->singleton(). For tests, the simplest
-        // path is to manually instantiate the provider with the test
-        // container and call its public method directly. We do NOT call
-        // boot() because that would register event listeners on the
-        // test container, leaking into other tests.
-        return new AppServiceProvider($this->app);
+        return new TmpAppServiceProvider($this->app, $this->tmpMigrationsDir);
     }
 
     #[Test]
@@ -96,19 +93,15 @@ class PreMigrateHookTest extends TestCase
             "DB::table('users')->truncate();"
         );
 
+        $thrown = null;
         try {
-            $thrown = null;
-            try {
-                $this->appProvider()->handleMigrateSafetyHook($this->makeEvent('migrate'));
-            } catch (RuntimeException $e) {
-                $thrown = $e;
-            }
-            $this->assertNotNull($thrown, 'expected RuntimeException when destructive migration is on disk');
-            $this->assertStringContainsString('[db-safety] `php artisan migrate` aborted', $thrown->getMessage());
-            $this->assertStringContainsString('--allow-quarantined', $thrown->getMessage());
-        } finally {
-            @unlink($this->createdFixtures[count($this->createdFixtures) - 1] ?? '');
+            $this->appProviderForTmpDir()->handleMigrateSafetyHook($this->makeEvent('migrate'));
+        } catch (RuntimeException $e) {
+            $thrown = $e;
         }
+        $this->assertNotNull($thrown, 'expected RuntimeException when destructive migration is on disk');
+        $this->assertStringContainsString('[db-safety] `php artisan migrate` aborted', $thrown->getMessage());
+        $this->assertStringContainsString('--allow-quarantined', $thrown->getMessage());
     }
 
     #[Test]
@@ -119,15 +112,11 @@ class PreMigrateHookTest extends TestCase
             "DB::table('users')->truncate();"
         );
 
-        try {
-            // Should NOT throw
-            $this->appProvider()->handleMigrateSafetyHook(
-                $this->makeEvent('migrate', ['--allow-quarantined'])
-            );
-            $this->assertTrue(true, 'migrate --allow-quarantined should not throw');
-        } finally {
-            @unlink($this->createdFixtures[count($this->createdFixtures) - 1] ?? '');
-        }
+        // Should NOT throw
+        $this->appProviderForTmpDir()->handleMigrateSafetyHook(
+            $this->makeEvent('migrate', ['--allow-quarantined'])
+        );
+        $this->assertTrue(true, 'migrate --allow-quarantined should not throw');
     }
 
     #[Test]
@@ -138,18 +127,14 @@ class PreMigrateHookTest extends TestCase
             "DB::table('users')->truncate();"
         );
 
+        $thrown = null;
         try {
-            $thrown = null;
-            try {
-                $this->appProvider()->handleMigrateSafetyHook($this->makeEvent('migrate:fresh'));
-            } catch (RuntimeException $e) {
-                $thrown = $e;
-            }
-            $this->assertNotNull($thrown, 'expected abort on migrate:fresh');
-            $this->assertStringContainsString('migrate:fresh', $thrown->getMessage());
-        } finally {
-            @unlink($this->createdFixtures[count($this->createdFixtures) - 1] ?? '');
+            $this->appProviderForTmpDir()->handleMigrateSafetyHook($this->makeEvent('migrate:fresh'));
+        } catch (RuntimeException $e) {
+            $thrown = $e;
         }
+        $this->assertNotNull($thrown, 'expected abort on migrate:fresh');
+        $this->assertStringContainsString('migrate:fresh', $thrown->getMessage());
     }
 
     #[Test]
@@ -160,18 +145,14 @@ class PreMigrateHookTest extends TestCase
             "DB::table('users')->truncate();"
         );
 
+        $thrown = null;
         try {
-            $thrown = null;
-            try {
-                $this->appProvider()->handleMigrateSafetyHook($this->makeEvent('migrate:rollback'));
-            } catch (RuntimeException $e) {
-                $thrown = $e;
-            }
-            $this->assertNotNull($thrown, 'expected abort on migrate:rollback');
-            $this->assertStringContainsString('migrate:rollback', $thrown->getMessage());
-        } finally {
-            @unlink($this->createdFixtures[count($this->createdFixtures) - 1] ?? '');
+            $this->appProviderForTmpDir()->handleMigrateSafetyHook($this->makeEvent('migrate:rollback'));
+        } catch (RuntimeException $e) {
+            $thrown = $e;
         }
+        $this->assertNotNull($thrown, 'expected abort on migrate:rollback');
+        $this->assertStringContainsString('migrate:rollback', $thrown->getMessage());
     }
 
     #[Test]
@@ -182,28 +163,24 @@ class PreMigrateHookTest extends TestCase
             "DB::table('users')->truncate();"
         );
 
+        $thrown = null;
         try {
-            $thrown = null;
-            try {
-                $this->appProvider()->handleMigrateSafetyHook($this->makeEvent('migrate:safe'));
-            } catch (RuntimeException $e) {
-                $thrown = $e;
-            }
-            $this->assertNotNull($thrown, 'expected abort on migrate:safe');
-            $this->assertStringContainsString('migrate:safe', $thrown->getMessage());
-        } finally {
-            @unlink($this->createdFixtures[count($this->createdFixtures) - 1] ?? '');
+            $this->appProviderForTmpDir()->handleMigrateSafetyHook($this->makeEvent('migrate:safe'));
+        } catch (RuntimeException $e) {
+            $thrown = $e;
         }
+        $this->assertNotNull($thrown, 'expected abort on migrate:safe');
+        $this->assertStringContainsString('migrate:safe', $thrown->getMessage());
     }
 
     #[Test]
     public function non_migrate_commands_are_unaffected(): void
     {
-        // No fixture needed: even if there were a destructive migration,
-        // schedule:run must not be guarded. The hook should be a no-op.
-        $this->appProvider()->handleMigrateSafetyHook($this->makeEvent('schedule:run'));
-        $this->appProvider()->handleMigrateSafetyHook($this->makeEvent('db:backup'));
-        $this->appProvider()->handleMigrateSafetyHook($this->makeEvent('queue:work'));
+        // The hook should be a no-op for non-migrate commands, regardless
+        // of any fixture in the tmp dir. (No fixture needed.)
+        $this->appProviderForTmpDir()->handleMigrateSafetyHook($this->makeEvent('schedule:run'));
+        $this->appProviderForTmpDir()->handleMigrateSafetyHook($this->makeEvent('db:backup'));
+        $this->appProviderForTmpDir()->handleMigrateSafetyHook($this->makeEvent('queue:work'));
 
         $this->assertTrue(true, 'non-migrate commands should be no-ops');
     }
@@ -211,18 +188,16 @@ class PreMigrateHookTest extends TestCase
     #[Test]
     public function blocked_attempt_is_logged_at_warning_level(): void
     {
-        $fixture = $this->writeFixture(
+        $this->writeFixture(
             '2026_10_17_120006_test_hook_log.php',
             "DB::table('users')->truncate();"
         );
 
-        // Use Log::spy() to capture without polluting test output. The
-        // hook emits Log::warning('[db-safety] blocked migrate', [...]).
         Log::spy();
 
         try {
             try {
-                $this->appProvider()->handleMigrateSafetyHook($this->makeEvent('migrate'));
+                $this->appProviderForTmpDir()->handleMigrateSafetyHook($this->makeEvent('migrate'));
                 $this->fail('expected RuntimeException');
             } catch (RuntimeException $e) {
                 // expected
@@ -238,28 +213,42 @@ class PreMigrateHookTest extends TestCase
                         && is_int($context['line'] ?? null);
                 });
         } finally {
-            @unlink($fixture);
+            // No DB cleanup needed — fixtures live in /tmp.
         }
     }
 
     #[Test]
     public function bypass_via_allow_quarantined_does_not_log(): void
     {
-        $fixture = $this->writeFixture(
+        $this->writeFixture(
             '2026_10_17_120007_test_hook_log_bypass.php',
             "DB::table('users')->truncate();"
         );
 
         Log::spy();
 
-        try {
-            $this->appProvider()->handleMigrateSafetyHook(
-                $this->makeEvent('migrate', ['--allow-quarantined'])
-            );
+        $this->appProviderForTmpDir()->handleMigrateSafetyHook(
+            $this->makeEvent('migrate', ['--allow-quarantined'])
+        );
 
-            Log::shouldNotHaveReceived('warning');
-        } finally {
-            @unlink($fixture);
-        }
+        Log::shouldNotHaveReceived('warning');
+    }
+}
+
+/**
+ * AppServiceProvider subclass that points the destructive-migrations
+ * lint at a configurable path (used in tests to avoid touching the
+ * project's real `database/migrations/`).
+ */
+class TmpAppServiceProvider extends AppServiceProvider
+{
+    public function __construct($app, private readonly string $migrationsPath)
+    {
+        parent::__construct($app);
+    }
+
+    protected function callLintCommand(?string $migrationsPath = null): int
+    {
+        return parent::callLintCommand($this->migrationsPath);
     }
 }

@@ -146,13 +146,20 @@ class AppServiceProvider extends ServiceProvider
 
     /**
      * Run the destructive-migrations lint with --strict-data and return the
-     * exit code. Wrapped in a method so tests can mock it if needed.
+     * exit code. Wrapped in a method so tests can subclass and point the
+     * lint at a tmp directory instead of `database/migrations/`, keeping
+     * test fixtures out of the production tree.
+     *
+     * @param  string|null  $migrationsPath  override the default scan path; null = `database/migrations/`.
      */
-    private function callLintCommand(): int
+    protected function callLintCommand(?string $migrationsPath = null): int
     {
-        return Artisan::call(CheckDestructiveMigrationsCommand::class, [
-            '--strict-data' => true,
-        ]);
+        $params = ['--strict-data' => true];
+        if ($migrationsPath !== null) {
+            $params['--path'] = $migrationsPath;
+        }
+
+        return Artisan::call(CheckDestructiveMigrationsCommand::class, $params);
     }
 
     /**
