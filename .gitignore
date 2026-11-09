@@ -86,3 +86,5 @@ storage/app/public/media/
 storage/logs/
 storage/app/emission-daemons/
 storage/app/test-emissions/
+# Config de los daemons de restream: contiene el stream_key descifrado.
+storage/app/restream-daemons/

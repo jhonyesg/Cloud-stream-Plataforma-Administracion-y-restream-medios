@@ -57,6 +57,35 @@ Snapshots in `database/snapshots/` are **gitignored** — never commit them. The
 - **Sync YouTube lifecycle:** `php artisan restream:sync-youtube-status [--once] [--json]` — polls YouTube's `liveBroadcasts.list?part=status` API for every YouTube restream target with a non-null `platform_broadcast_id` and `pipeline_pid`, persists `platform_broadcast_lifecycle` + `last_youtube_poll_at`. As of 2026-09-30 also polls idle targets (status idle, no pipeline_pid) that still have a bound broadcast so the `effective_status=zombie-live` badge reflects reality. Runs every 30s via `routes/console.php`. Per-target catch so a single YouTube error never aborts the batch.
 - **Reap YouTube zombies:** `php artisan restream:reap-youtube-zombies [--dry-run]` — every minute, scans idle YouTube targets with a bound broadcast. If YouTube still reports `live/liveStarting/testing`, transitions to `complete` and records `kind=youtube_zombie_detected` + `kind=youtube_zombie_recovered` (or `_recovery_failed` on exception). If YouTube already reports `complete/revoked`, clears `platform_broadcast_id`/`destination_url`/`stream_key` and records `kind=youtube_zombie_recovered` with `metadata.cleaned=true`. Safety net for the orchestrator's `stop()` YouTube transition: catches historical zombies (predates the fix) and any target where the transition failed and was never retried. Idempotent: a second run on a cleaned target yields no candidates.
 
+## Public Site — Section "Una señal. Todos los formatos."
+
+The home page (`resources/views/landing.blade.php`) publishes the emission and
+delivery protocol matrix between the **Planes** block and the **FAQ** block,
+with `id="formatos"` and an anchor in `resources/views/components/public-nav.blade.php`.
+
+- **Component:** `<x-public-delivery-urls />`
+  (`resources/views/components/public-delivery-urls.blade.php`), rows rendered by
+  `<x-delivery-url-row />`. Reusable in the vertical landings
+  (`resources/views/public/landings/`) and, later, in the client panel.
+- **Single source of truth:** `config/streaming_public.php` →
+  `display_host`, `example_slug`, `ports` (`rtmp` 1935, `srt_publish` 10080,
+  `srt_play` 7386). URLs are built by `App\Services\StreamingUrlBuilder`; never
+  hardcode a host, a port or a channel name in the Blade.
+- **The showcase host `streaming.mediaserver.com.co` does NOT resolve** and is
+  display-only. The published URLs are **templates** of the format the client
+  receives, never working access links. Do not create a DNS record for it and do
+  not alias it to the production vhost: that would publish production under a
+  second name.
+- **Never publish on any public page:** the production streaming host
+  (`canal.mediaserver.com.co`), the server IP (`15.204.8.139`),
+  `config('mediaserver.public_host')`, `MEDIASERVER_API_URL`, a real customer
+  channel name or a stream key. The published channel is always the placeholder
+  `tu-canal`.
+- **Guardrail:** `tests/Feature/LandingDeliveryUrlsTest.php` fails if the IP,
+  the production host or a real channel name reach the published HTML. Keep it
+  green when editing the section.
+- Reference: `openspec/changes/landing-delivery-urls-section/`.
+
 ## Emission Module — Status: ACTIVE (rebuild completed 2026-08/09)
 
 > **Historic note:** an earlier version of this section declared the emission
@@ -160,6 +189,37 @@ inserted. The daemon re-fetches the timeline, resolves the item for the current
   Skips templates on `suspended`/`archived` channels. Dry-run by default;
   pass `--apply` to mutate. `--json` emits structured output for piping.
   See `openspec/changes/scheduler-heal-draft-template-on-read/`.
+
+## Channel URLs Modal (Programación)
+
+El módulo de Programación tiene un botón **"URLs"** (admin **y** client) que
+abre un modal con la matriz completa de URLs del canal seleccionado, traída de
+MediaServer Platform y lista para copiar.
+
+- **Endpoint**: `GET /api/channels/{channelId}/mediaserver/urls`
+  (`App\Http\Controllers\Api\MediaserverStreamController`). Un solo endpoint
+  para las dos superficies; el scoping es el de `Api\VirtualScreenController`:
+  admin ve cualquier canal, client solo los de `effectiveChannelIds()`.
+- **Fuente de verdad**: el bloque `urls` que devuelve `GET /api/streams/{name}`
+  de MediaServer Platform (`MediaserverApiService::getStream()` /
+  `getStreamUrls()`). **Cloudstream no recalcula esas URLs** — duplicar el
+  builder del panel (recorte de sufijos `.m3u8`, dominio público, puertos SRT)
+  haría divergir las dos copias.
+- **Qué se muestra (superficie de cliente)**: en **Publicar** solo el **RTMP**
+  (lo que se pega en OBS/vMix/Wirecast); en **Reproducir** solo las variantes
+  **por dominio** (HTTPS, HTTP y SRT de lectura). Las URLs directas al
+  servidor por IP+puerto (SRS `:8080`, panel `:1985/mpegts`, SRT `:7386`) y el
+  SRT de publicación **no se exponen**: el modal es de cara al cliente.
+  Cubierto por `tests/Feature/MediaserverStreamUrlsTest.php`.
+- **Mapeo canal → stream**: único, en `App\Services\MediaserverStreamResolver`
+  (basename de `public_hls_url` → `live/<stream>` de `virtualScreen.output_url`
+  → slug). Lo comparten el dashboard de métricas y este modal.
+- **Degradación**: si el canal no tiene stream en la plataforma (no está
+  emitiendo) el modal lo explica y ofrece `channel.public_hls_url`; si la API
+  no responde, avisa que la plataforma no está disponible.
+- **UI**: `resources/views/components/stream-urls-modal.blade.php`, montado en
+  `admin/scheduler/index.blade.php` **y** `client/scheduler/index.blade.php`.
+  Referencia: `openspec/changes/scheduler-stream-urls-modal/`.
 
 ## Architecture Notes
 
