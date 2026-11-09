@@ -22,8 +22,8 @@ class FacebookBroadcastService
         $payload = array_filter([
             'title' => $target->title ?: $target->name,
             'description' => $target->description,
-            'status' => $target->scheduled_start_at ? 'SCHEDULED_UNPUBLISHED' : 'LIVE_NOW',
-            'planned_start_time' => $target->scheduled_start_at?->timestamp,
+            'status' => 'LIVE_NOW',
+            'planned_start_time' => now()->timestamp,
             'access_token' => $pageToken,
         ]);
 

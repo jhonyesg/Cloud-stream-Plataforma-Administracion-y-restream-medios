@@ -39,12 +39,14 @@ return [
         'client_id' => env('YOUTUBE_CLIENT_ID'),
         'client_secret' => env('YOUTUBE_CLIENT_SECRET'),
         'redirect' => env('YOUTUBE_REDIRECT_URI', env('APP_URL').'/client/restream/accounts/youtube/callback'),
+        'redirect_admin' => env('YOUTUBE_REDIRECT_ADMIN_URI', env('APP_URL').'/admin/restream-accounts/youtube/callback'),
     ],
 
     'facebook' => [
         'client_id' => env('FACEBOOK_CLIENT_ID'),
         'client_secret' => env('FACEBOOK_CLIENT_SECRET'),
         'redirect' => env('FACEBOOK_REDIRECT_URI', env('APP_URL').'/client/restream/accounts/facebook/callback'),
+        'redirect_admin' => env('FACEBOOK_REDIRECT_ADMIN_URI', env('APP_URL').'/admin/restream-accounts/facebook/callback'),
     ],
 
 ];

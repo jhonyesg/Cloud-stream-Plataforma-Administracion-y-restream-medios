@@ -38,6 +38,9 @@ class RestreamPlatformAccountController extends Controller
     {
         $this->abortUnlessSupported($platform);
 
+        $request->session()->put('restream_oauth_for_user', $request->user()->id);
+        $request->session()->put('restream_oauth_actor', 'client');
+
         return $this->driverFor($platform)->redirect();
     }
 
@@ -45,14 +48,23 @@ class RestreamPlatformAccountController extends Controller
     {
         $this->abortUnlessSupported($platform);
 
+        $sessionForUser = $request->session()->pull('restream_oauth_for_user');
+        $request->session()->forget('restream_oauth_actor');
+
+        $user = $request->user();
+        $targetUserId = $sessionForUser ?: $user->id;
+
+        if ($targetUserId !== $user->id) {
+            return redirect()->route('client.restream.index')
+                ->withErrors(['restream' => 'Sesión OAuth inválida. Vuelve a intentarlo desde tu panel.']);
+        }
+
         try {
             $socialiteUser = $this->driverFor($platform)->user();
         } catch (\Throwable $e) {
             return redirect()->route('client.restream.index')
                 ->withErrors(['restream' => 'No se pudo completar la conexión con ' . ucfirst($platform) . '.']);
         }
-
-        $user = $request->user();
 
         $attributes = [
             'platform_account_id' => $socialiteUser->getId(),
@@ -72,15 +84,15 @@ class RestreamPlatformAccountController extends Controller
                 : null;
         }
 
-        RestreamPlatformAccount::updateOrCreate(
-            ['user_id' => $user->id, 'platform' => $platform],
+        $account = RestreamPlatformAccount::updateOrCreate(
+            ['user_id' => $targetUserId, 'platform' => $platform],
             $attributes,
         );
 
         AuditLog::record(
             action: 'connect.restream_platform_account',
             entityType: 'restream_platform_account',
-            entityId: $platform,
+            entityId: $account->id,
             before: null,
             after: ['platform' => $platform, 'display_name' => $attributes['display_name']],
         );
@@ -109,7 +121,7 @@ class RestreamPlatformAccountController extends Controller
         AuditLog::record(
             action: 'disconnect.restream_platform_account',
             entityType: 'restream_platform_account',
-            entityId: $platform,
+            entityId: $account->id,
             before: ['platform' => $platform],
             after: null,
         );

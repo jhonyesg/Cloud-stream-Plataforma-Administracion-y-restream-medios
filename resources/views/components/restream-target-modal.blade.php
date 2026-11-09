@@ -178,7 +178,7 @@
                 .replace('CID', this.channel.id)
                 .replace('TID', this.target ? this.target.id : '');
 
-            const isEnabled = form.querySelector('[name="enabled"]').checked;
+            const isEnabled = form.querySelector('[name=&quot;enabled&quot;]').checked;
 
             let r;
             if (this.mode === 'create') {
