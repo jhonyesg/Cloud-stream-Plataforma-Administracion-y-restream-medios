@@ -7,10 +7,13 @@ use App\Models\Channel;
 use App\Models\MediaItem;
 use App\Models\Playlist;
 use App\Models\ScheduleTemplate;
+use App\Services\Scheduler\TemplateActivator;
 use Illuminate\Http\Request;
 
 class ScheduleController extends Controller
 {
+    public function __construct(private readonly TemplateActivator $activator) {}
+
     public function index(Request $request)
     {
         $user = $request->user();
@@ -48,6 +51,8 @@ class ScheduleController extends Controller
                 ->first();
 
             if ($template) {
+                $this->activator->activateIfHealable($template);
+                $template->refresh();
                 $blocksByDay = $template->blocks->keyBy('day_of_month');
             }
 

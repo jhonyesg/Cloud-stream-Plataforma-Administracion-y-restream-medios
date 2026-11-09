@@ -2,7 +2,9 @@
 
 namespace Database\Seeders;
 
+use App\Models\ScheduleTemplate;
 use App\Services\MigrationSnapshot;
+use App\Services\Scheduler\TemplateActivator;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -76,6 +78,41 @@ class ProductionDataSeeder extends Seeder
             });
 
             $this->command?->info("Restored {$table}: ".count($rows).' rows');
+        }
+
+        $this->healDraftTemplates();
+    }
+
+    /**
+     * After restoring the release snapshot, promote any draft ScheduleTemplate
+     * that has blocks (consistent read-side state) so the scheduler view and
+     * emission start do not need to heal at request time.
+     */
+    private function healDraftTemplates(): void
+    {
+        $candidates = ScheduleTemplate::query()
+            ->where('status', 'draft')
+            ->whereHas('blocks')
+            ->get();
+
+        if ($candidates->isEmpty()) {
+            return;
+        }
+
+        $activator = app(TemplateActivator::class);
+        $healed = 0;
+        foreach ($candidates as $template) {
+            if ($activator->activateIfHealable($template)) {
+                $healed++;
+            }
+        }
+
+        if ($healed > 0) {
+            $this->command?->info("Healed {$healed} draft schedule template(s) after snapshot restore.");
+            Log::info('ProductionDataSeeder: healed draft templates', [
+                'count' => $healed,
+                'channel_ids' => $candidates->pluck('channel_id')->unique()->values()->all(),
+            ]);
         }
     }
 }

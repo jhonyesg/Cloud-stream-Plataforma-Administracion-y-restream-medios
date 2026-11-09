@@ -7,12 +7,15 @@ use App\Models\AuditLog;
 use App\Models\Playlist;
 use App\Models\ScheduleBlock;
 use App\Models\ScheduleTemplate;
+use App\Services\Scheduler\TemplateActivator;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class ScheduleTemplateController extends Controller
 {
+    public function __construct(private readonly TemplateActivator $activator) {}
+
     public function index(Request $request): JsonResponse
     {
         $user = $request->user();
@@ -196,7 +199,7 @@ class ScheduleTemplateController extends Controller
             $attrs
         );
 
-        $this->autoActivateIfNeeded($scheduleTemplate);
+        $this->activator->activateIfHealable($scheduleTemplate, TemplateActivator::AUDIT_AUTO_ACTIVATE);
 
         // Regenerate timeline so the new playlist policy is reflected.
         $builder = app(\App\Services\TimelineBuilder::class);
@@ -236,7 +239,7 @@ class ScheduleTemplateController extends Controller
             }
         });
 
-        $this->autoActivateIfNeeded($scheduleTemplate);
+        $this->activator->activateIfHealable($scheduleTemplate, TemplateActivator::AUDIT_AUTO_ACTIVATE);
 
         return response()->json(['replicated' => $updated, 'source_day' => $data['source_day']]);
     }
@@ -280,48 +283,5 @@ class ScheduleTemplateController extends Controller
         if ($t->blocks()->count() === 0) {
             abort(422, 'La plantilla no tiene bloques asignados.');
         }
-    }
-
-    private function autoActivateIfNeeded(ScheduleTemplate $scheduleTemplate): void
-    {
-        if ($scheduleTemplate->status !== 'draft') {
-            return;
-        }
-
-        $before = $scheduleTemplate->only(['status']);
-
-        DB::transaction(function () use ($scheduleTemplate) {
-            $archivedIds = ScheduleTemplate::where('channel_id', $scheduleTemplate->channel_id)
-                ->where('year', $scheduleTemplate->year)
-                ->where('month', $scheduleTemplate->month)
-                ->where('status', 'active')
-                ->where('id', '!=', $scheduleTemplate->id)
-                ->pluck('id');
-
-            if ($archivedIds->isNotEmpty()) {
-                ScheduleTemplate::whereIn('id', $archivedIds)->update(['status' => 'archived']);
-                foreach ($archivedIds as $tplId) {
-                    AuditLog::record(
-                        'update.schedule_template.auto_archive_on_promote',
-                        'schedule_template',
-                        $tplId,
-                        ['status' => 'active'],
-                        ['status' => 'archived'],
-                        $scheduleTemplate->channel_id
-                    );
-                }
-            }
-
-            $scheduleTemplate->update(['status' => 'active']);
-        });
-
-        AuditLog::record(
-            'update.schedule_template.auto_activate',
-            'schedule_template',
-            $scheduleTemplate->id,
-            $before,
-            ['status' => 'active'],
-            $scheduleTemplate->channel_id
-        );
     }
 }

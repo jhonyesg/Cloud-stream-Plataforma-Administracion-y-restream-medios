@@ -8,12 +8,16 @@ use App\Models\PlaylistItem;
 use App\Models\ProgramTimelineItem;
 use App\Models\ScheduleBlock;
 use App\Models\ScheduleTemplate;
+use App\Services\Scheduler\TemplateActivator;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 
 class ScheduledPlaylistResolver
 {
-    public function __construct(private readonly EmisionStartExceptionFactory $errors) {}
+    public function __construct(
+        private readonly EmisionStartExceptionFactory $errors,
+        private readonly TemplateActivator $activator,
+    ) {}
 
     /**
      * Resuelve la playlist que debe reproducirse HOY en el canal dado.
@@ -72,6 +76,34 @@ class ScheduledPlaylistResolver
 
     private function resolveActiveTemplate(Channel $channel, int $year, int $month): ?ScheduleTemplate
     {
+        $active = ScheduleTemplate::query()
+            ->where('channel_id', $channel->id)
+            ->where('year', $year)
+            ->where('month', $month)
+            ->where('status', 'active')
+            ->orderByDesc('updated_at')
+            ->first();
+
+        if ($active) {
+            return $active;
+        }
+
+        $draft = ScheduleTemplate::query()
+            ->where('channel_id', $channel->id)
+            ->where('year', $year)
+            ->where('month', $month)
+            ->where('status', 'draft')
+            ->orderByDesc('updated_at')
+            ->first();
+
+        if (! $draft) {
+            return null;
+        }
+
+        if (! $this->activator->activateIfHealable($draft)) {
+            return null;
+        }
+
         return ScheduleTemplate::query()
             ->where('channel_id', $channel->id)
             ->where('year', $year)
