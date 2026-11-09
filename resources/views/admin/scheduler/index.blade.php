@@ -182,6 +182,15 @@
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v12M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2z"/></svg>
                     Nueva playlist
                 </button>
+                @if($currentChannel)
+                    <button type="button"
+                            @click="$store.modals.open('stream-urls', { channel_id: '{{ $currentChannel }}', channel_name: '{{ addslashes($currentChannelName) }}' })"
+                            class="inline-flex items-center gap-2 px-4 py-2.5 bg-white border border-indigo-200 text-indigo-700 text-sm font-semibold rounded-xl hover:bg-indigo-50 hover:border-indigo-300 active:scale-95 shadow-sm transition self-end"
+                            title="URLs de publicación y reproducción de este canal (MediaServer Platform)">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244"/></svg>
+                        URLs
+                    </button>
+                @endif
             </div>
         </div>
 
@@ -480,6 +489,7 @@
     </script>
 
     <x-live-viewer-modal />
+    <x-stream-urls-modal />
 </x-admin-layout>
 
 <script>

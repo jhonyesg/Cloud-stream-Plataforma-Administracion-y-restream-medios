@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\Media\MediaUploadController;
 use App\Http\Controllers\Api\MediaItemController;
 use App\Http\Controllers\Api\MediaStreamController;
 use App\Http\Controllers\Api\MediaThumbnailController;
+use App\Http\Controllers\Api\MediaserverStreamController;
 use App\Http\Controllers\Api\PlaylistController;
 use App\Http\Controllers\Api\ScheduleTemplateController;
 use App\Http\Controllers\Api\VirtualScreenController;
@@ -21,6 +22,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/virtual-screens/{channelId}', [VirtualScreenController::class, 'show']);
     Route::put('/virtual-screens/{channelId}', [VirtualScreenController::class, 'update']);
     Route::post('/virtual-screens/{channelId}/test-preview', [VirtualScreenController::class, 'testPreview']);
+
+    // URLs de publicación/reproducción del canal (matriz de MediaServer Platform).
+    Route::get('/channels/{channelId}/mediaserver/urls', [MediaserverStreamController::class, 'show']);
 
     Route::get('/media-items', [MediaItemController::class, 'index']);
     Route::post('/media-items', [MediaItemController::class, 'store']);

@@ -19,7 +19,7 @@ grep -rn "x-.*-modal" resources/views/ --include="*.blade.php" | sort
 | View | Mounted modals |
 |---|---|
 | `admin/channels/index.blade.php` | `<x-channel-create-modal />`, `<x-channel-edit-modal />`, `<x-confirm-delete-modal />`, `<x-virtual-screen-editor-modal />`, `<x-virtual-screen-preview-viewer-modal />`, `<x-live-viewer-modal />` |
-| `admin/scheduler/index.blade.php` | `<x-live-viewer-modal />` (added during the dual-implementation fix) |
+| `admin/scheduler/index.blade.php` | `<x-live-viewer-modal />` (added during the dual-implementation fix), `<x-stream-urls-modal />` (URLs de publicación/reproducción del canal) |
 | `admin/users/index.blade.php` | (own internal modals, none shared) |
 | `admin/media/index.blade.php` | (uses global modals via the media-card x-data — `play-media`, `rename-media`, `confirm-delete`) |
 | `admin/dashboard.blade.php` | (none — dashboard doesn't open modals) |
@@ -29,7 +29,7 @@ grep -rn "x-.*-modal" resources/views/ --include="*.blade.php" | sort
 | View | Mounted modals |
 |---|---|
 | `client/channels/index.blade.php` | `<x-virtual-screen-editor-modal />`, `<x-virtual-screen-preview-viewer-modal />`, `<x-live-viewer-modal />` (client has no shared `edit-channel` modal — it uses an inline form instead) |
-| `client/scheduler/index.blade.php` | `<x-live-viewer-modal />` + many scheduler-specific modals (create-playlist, media-library-picker, playlist-editor-fullscreen, replicate, scheduler-dialogs) |
+| `client/scheduler/index.blade.php` | `<x-live-viewer-modal />` + many scheduler-specific modals (create-playlist, media-library-picker, playlist-editor-fullscreen, replicate, scheduler-dialogs) + `<x-stream-urls-modal />` (URLs de publicación/reproducción del canal) |
 | `client/media/index.blade.php` | (same global modals as admin/media — `play-media`, `rename-media`, `confirm-delete`) |
 | `client/dashboard.blade.php` | (none) |
 

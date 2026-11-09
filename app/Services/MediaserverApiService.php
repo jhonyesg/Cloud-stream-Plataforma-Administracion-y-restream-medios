@@ -41,24 +41,72 @@ class MediaserverApiService
     public function isReachable(): bool
     {
         if (! $this->isConfigured()) {
+            Log::warning('Mediaserver API no configurada', [
+                'api_url' => $this->apiUrl,
+                'hint' => 'define MEDIASERVER_API_URL / MEDIASERVER_API_USER / MEDIASERVER_API_PASSWORD',
+            ]);
             return false;
         }
+
+        $url = rtrim($this->apiUrl, '/') . '/api/health';
+
         try {
-            $response = $this->http()->timeout(2)->get(rtrim($this->apiUrl, '/') . '/api/health');
-            if (! $response->successful()) {
-                return false;
-            }
-            $payload = $response->json();
-            return is_array($payload) && (($payload['srs_alive'] ?? false) === true || ($payload['status'] ?? null) === 'ok');
-        } catch (Throwable) {
+            $response = $this->http()->timeout(2)->get($url);
+        } catch (Throwable $e) {
+            Log::warning('Mediaserver API inalcanzable', [
+                'url' => $url,
+                'error' => $e->getMessage(),
+            ]);
             return false;
         }
+
+        if (! $response->successful()) {
+            Log::warning('Mediaserver API health respondio no-2xx', [
+                'url' => $url,
+                'status' => $response->status(),
+            ]);
+            return false;
+        }
+
+        $payload = $response->json();
+        $healthy = is_array($payload)
+            && (($payload['srs_alive'] ?? false) === true || ($payload['status'] ?? null) === 'ok');
+
+        if (! $healthy) {
+            Log::warning('Mediaserver API health no reporta OK', [
+                'url' => $url,
+                'payload' => $payload,
+            ]);
+        }
+
+        return $healthy;
     }
 
     public function getStreams(): array
     {
         $response = $this->request('GET', '/api/streams/', ['only_active' => 'false']);
         return is_array($response['streams'] ?? null) ? $response['streams'] : [];
+    }
+
+    /**
+     * Detalle de un stream (incluye el bloque `urls` con publicación y
+     * reproducción). Lanza MediaserverApiException si la plataforma no
+     * conoce el stream (404) o si la API no responde.
+     */
+    public function getStream(string $name): array
+    {
+        return $this->request('GET', '/api/streams/' . rawurlencode($name), []);
+    }
+
+    /**
+     * Bloque `urls` de un stream: publicación (RTMP/SRT) y reproducción
+     * (HLS/FLV/SRT/WebRTC/MPEG-TS, directo y vía proxy).
+     */
+    public function getStreamUrls(string $name): array
+    {
+        $stream = $this->getStream($name);
+        $urls = $stream['urls'] ?? null;
+        return is_array($urls) ? $urls : [];
     }
 
     public function getClients(): array

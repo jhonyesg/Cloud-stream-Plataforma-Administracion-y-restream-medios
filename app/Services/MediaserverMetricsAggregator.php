@@ -7,8 +7,10 @@ use Throwable;
 
 class MediaserverMetricsAggregator
 {
-    public function __construct(private readonly MediaserverApiService $api)
-    {
+    public function __construct(
+        private readonly MediaserverApiService $api,
+        private readonly MediaserverStreamResolver $resolver,
+    ) {
     }
 
     public function available(): bool
@@ -53,7 +55,7 @@ class MediaserverMetricsAggregator
 
         $streamNames = [];
         foreach ($channels as $channel) {
-            $streamNames[$this->streamNameForChannel($channel)] = true;
+            $streamNames[$this->resolver->streamNameForChannel($channel)] = true;
         }
 
         $streams = $this->api->getStreams();
@@ -82,29 +84,10 @@ class MediaserverMetricsAggregator
 
         $map = collect();
         foreach ($channels as $channel) {
-            $map->put($this->streamNameForChannel($channel), $channel);
+            $map->put($this->resolver->streamNameForChannel($channel), $channel);
         }
 
         return $map;
-    }
-
-    private function streamNameForChannel(Channel $channel): string
-    {
-        $hls = (string) ($channel->public_hls_url ?? '');
-        if ($hls !== '') {
-            $path = (string) parse_url($hls, PHP_URL_PATH);
-            $name = basename($path, '.m3u8');
-            if ($name !== '' && $name !== $path) {
-                return $name;
-            }
-        }
-
-        $output = (string) ($channel->virtualScreen?->output_url ?? '');
-        if ($output !== '' && preg_match('~^.*/live/([^/?#]+)~', $output, $m)) {
-            return $m[1];
-        }
-
-        return (string) $channel->slug;
     }
 
     private function rules(): array
@@ -131,10 +114,36 @@ class MediaserverMetricsAggregator
             'video' => $stream['video'] ?? null,
             'audio' => $stream['audio'] ?? null,
             'srt_port' => $stream['srt_port'] ?? null,
-            'uptime_ms' => (int) ($stream['uptime_ms'] ?? 0),
+            'uptime_ms' => $this->normalizeUptimeMs((int) ($stream['uptime_ms'] ?? 0)),
             'rules' => $this->rulesForStream($name, $rules),
             'viewers' => null,
         ];
+    }
+
+    /**
+     * El panel expone `uptime_ms` tomado de `live_ms` de SRS, que en la
+     * build actual devuelve la marca de tiempo actual (epoch ms) en lugar de
+     * una duración: el mismo valor para todos los streams y siempre igual al
+     * "now". Ese dato se descarta (0 => la vista muestra "—") para no pintar
+     * un uptime de 56 años. Se aceptan duraciones reales hasta 10 años.
+     */
+    private function normalizeUptimeMs(int $raw): int
+    {
+        if ($raw <= 0) {
+            return 0;
+        }
+
+        $maxDurationMs = 10 * 365 * 24 * 60 * 60 * 1000;
+        if ($raw > $maxDurationMs) {
+            return 0;
+        }
+
+        $nowMs = (int) round(microtime(true) * 1000);
+        if (abs($nowMs - $raw) < 60 * 60 * 1000) {
+            return 0;
+        }
+
+        return $raw;
     }
 
     private function rulesForStream(string $name, array $rules): array
