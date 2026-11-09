@@ -19,7 +19,7 @@
 
         @include('partials._favicons')
 
-        <script src="{{ asset('js/tailwind.js') }}"></script>
+        <link rel="stylesheet" href="{{ asset('css/tailwind.min.css') }}">
         <script defer src="{{ asset('js/alpine.min.js') }}"></script>
     </head>
     <body class="font-sans antialiased">

@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{{ config('app.name', 'Cloudstream') }} — Iniciar sesión</title>
-    <script src="{{ asset('js/tailwind.js') }}"></script>
+    <link rel="stylesheet" href="{{ asset('css/tailwind.min.css') }}">
     <style>
         :root {
             --c-bg-1: #050816;

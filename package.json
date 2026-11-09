@@ -1,0 +1,8 @@
+{
+  "name": "cloudstream-public",
+  "private": true,
+  "scripts": {
+    "build:css": "tailwindcss -i ./resources/css/tailwind.input.css -o ./public/css/tailwind.min.css --minify",
+    "watch:css": "tailwindcss -i ./resources/css/tailwind.input.css -o ./public/css/tailwind.min.css --watch"
+  }
+}

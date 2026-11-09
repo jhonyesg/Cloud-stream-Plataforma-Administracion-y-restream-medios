@@ -116,7 +116,7 @@
                 <button
                     type="button"
                     @click="Alpine.store('modals').close()"
-                    class="shrink-0 -mt-1 -mr-1 p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition"
+                    class="shrink-0 -mt-1 -mr-1 p-2 text-gray-500 hover:text-gray-900 bg-white hover:bg-gray-100 ring-1 ring-gray-200 hover:ring-gray-300 rounded-lg transition shadow-sm"
                     aria-label="Cerrar"
                 >
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

@@ -19,7 +19,7 @@
         $theme = $themes[$active ?? 'dashboard'] ?? $themes['dashboard'];
     @endphp
 
-    <script src="{{ asset('js/tailwind.js') }}"></script>
+    <link rel="stylesheet" href="{{ asset('css/tailwind.min.css') }}">
     {{-- Plyr.io + HLS.js for the live-viewer modal --}}
     <link rel="stylesheet" href="https://cdn.plyr.io/3.6.8/plyr.css">
     <script src="https://cdn.plyr.io/3.6.8/plyr.polyfilled.js"></script>
