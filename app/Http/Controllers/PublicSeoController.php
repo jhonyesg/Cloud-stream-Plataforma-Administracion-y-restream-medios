@@ -78,6 +78,18 @@ class PublicSeoController extends Controller
         return view('public.about', ['meta' => $meta]);
     }
 
+    public function privacy()
+    {
+        $meta = $this->headData('/politica-de-privacidad');
+        return view('public.privacy', ['meta' => $meta]);
+    }
+
+    public function terms()
+    {
+        $meta = $this->headData('/terminos-y-condiciones');
+        return view('public.terms', ['meta' => $meta]);
+    }
+
     public function sitemap()
     {
         $urls = collect(config('seo.public_urls', []))->map(function ($u) {
@@ -87,6 +99,7 @@ class PublicSeoController extends Controller
                 'landing' => ['0.9', 'monthly'],
                 'blog-index' => ['0.8', 'weekly'],
                 'blog' => ['0.7', 'monthly'],
+                'legal' => ['0.4', 'yearly'],
                 default => ['0.5', 'monthly'],
             };
 
@@ -124,16 +137,44 @@ class PublicSeoController extends Controller
     {
         $site = rtrim(config('seo.site_url'), '/');
         $urls = config('seo.public_urls', []);
-        $content = "# Cloudstream — llms.txt\n"
-            . "# Servicio de señal de TV en vivo por Internet en Colombia para canales de TV, emisoras, iglesias y productoras.\n"
-            . "# Empresa: Media Clouding SAS, Bogotá, Colombia.\n"
-            . "# Contacto: contacto@cloudstream.mediaserver.com.co · +57 312 408 2557\n\n";
+        $company = config('seo.company');
 
+        $sections = [
+            'home' => 'Inicio',
+            'landing' => 'Servicios',
+            'blog-index' => 'Blog',
+            'blog' => 'Artículos',
+            'faq' => 'Preguntas frecuentes',
+            'about' => 'Empresa',
+            'legal' => 'Legal',
+        ];
+
+        $grouped = [];
         foreach ($urls as $u) {
-            $content .= '- ' . $site . $u['path'] . ': ' . $u['description'] . "\n";
+            $type = $u['type'] ?? 'home';
+            $grouped[$type] ??= [];
+            $grouped[$type][] = $u;
+        }
+        ksort($grouped);
+
+        $content = "# Cloudstream\n\n";
+        $content .= "> " . ($company['name'] ?? 'Cloudstream') . " — Servicio de señal de TV en vivo por Internet en Colombia. ";
+        $content .= "Datacenter americano, uptime 99%, streaming 24/7, programador de contenido, cuñas publicitarias y restream a redes sociales. ";
+        $content .= "Contacto: [{$company['phone_display']}](tel:{$company['phone_e164']}) · [{$company['email']}](mailto:{$company['email']}).\n\n";
+
+        foreach ($grouped as $type => $items) {
+            $content .= "## " . ($sections[$type] ?? ucfirst($type)) . "\n\n";
+            foreach ($items as $u) {
+                $path = $u['path'];
+                $url = $site . $path;
+                $title = $u['title'] ?? $path;
+                $desc = $u['description'] ?? '';
+                $content .= "- [{$title}]({$url}): {$desc}\n";
+            }
+            $content .= "\n";
         }
 
-        return response($content, 200, ['Content-Type' => 'text/plain; charset=UTF-8']);
+        return response($content, 200, ['Content-Type' => 'text/markdown; charset=UTF-8']);
     }
 
     protected function headData(string $path): array

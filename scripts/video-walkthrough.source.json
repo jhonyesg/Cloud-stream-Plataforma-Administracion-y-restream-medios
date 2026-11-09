@@ -1,0 +1,108 @@
+{
+    "slug": "youtube-walkthrough",
+    "title": "Emite a YouTube en 6 pasos",
+    "source_default": "/tmp/kilo/walkthrough/src/simplescreenrecorder-2026-10-22_17.01.06.mp4",
+    "source_recorded_at": "2026-10-22",
+    "crop": { "w": 1920, "h": 960, "x": 0, "y": 120 },
+    "scale": { "w": 1280, "h": 640 },
+    "encode": {
+        "crf": 26,
+        "preset": "medium",
+        "pix_fmt": "yuv420p",
+        "gop": 60,
+        "audio": false
+    },
+    "redactions": {
+        "app_user_header": {
+            "kind": "blur",
+            "x": 1688, "y": 115, "w": 225, "h": 85,
+            "note": "Correo de la cuenta del panel (arriba a la derecha)"
+        },
+        "account_name_top": {
+            "kind": "blur",
+            "x": 555, "y": 482, "w": 215, "h": 40,
+            "note": "Nombre de la cuenta conectada en 'Cuentas conectadas' (panel sin scroll)"
+        },
+        "account_name_scrolled": {
+            "kind": "blur",
+            "x": 555, "y": 252, "w": 215, "h": 40,
+            "note": "Nombre de la cuenta conectada (panel con scroll)"
+        },
+        "google_account_email": {
+            "kind": "blur",
+            "x": 465, "y": 610, "w": 205, "h": 52,
+            "note": "Correo personal en la pantalla de consentimiento de Google"
+        },
+        "modal_account_create": {
+            "kind": "blur",
+            "x": 630, "y": 528, "w": 400, "h": 52,
+            "note": "Nombre de la persona en 'Usar mi cuenta de ...' (modal de destino)"
+        },
+        "log_stream_key_line": {
+            "kind": "blur",
+            "x": 500, "y": 674, "w": 855, "h": 26,
+            "note": "Stream key de YouTube dentro de la linea de comando ffmpeg del log"
+        },
+        "credentials_panel": {
+            "kind": "cover",
+            "x": 470, "y": 788, "w": 1230, "h": 232,
+            "label": "Credenciales y claves ocultas",
+            "note": "Panel de credenciales (stream key, RTMP completo, comando ffmpeg)"
+        }
+    },
+    "chapters": [
+        {
+            "id": "el-panel",
+            "order": 1,
+            "poster_at": 12,
+            "segments": [
+                { "start": 6, "duration": 8, "redactions": ["app_user_header", "account_name_top", "account_name_scrolled"] }
+            ]
+        },
+        {
+            "id": "conectar-cuenta",
+            "order": 2,
+            "poster_at": 21,
+            "segments": [
+                { "start": 19, "duration": 8, "redactions": ["google_account_email"] },
+                { "start": 27, "duration": 6, "redactions": ["app_user_header", "account_name_top"] }
+            ]
+        },
+        {
+            "id": "crear-destino",
+            "order": 3,
+            "poster_at": 46,
+            "segments": [
+                { "start": 43, "duration": 15, "redactions": ["app_user_header", "account_name_top", "modal_account_create"],
+                  "crop": { "w": 1200, "h": 600, "x": 360, "y": 120 } }
+            ]
+        },
+        {
+            "id": "programar-ventana",
+            "order": 4,
+            "poster_at": 90,
+            "segments": [
+                { "start": 63, "duration": 10, "redactions": ["app_user_header", "account_name_top", "account_name_scrolled"],
+                  "crop": { "w": 1200, "h": 600, "x": 360, "y": 120 } },
+                { "start": 88, "duration": 13, "redactions": ["app_user_header", "account_name_top", "account_name_scrolled"],
+                  "crop": { "w": 1200, "h": 600, "x": 360, "y": 420 } }
+            ]
+        },
+        {
+            "id": "varias-ventanas",
+            "order": 5,
+            "poster_at": 228,
+            "segments": [
+                { "start": 226, "duration": 6, "redactions": ["app_user_header", "account_name_top", "account_name_scrolled"] }
+            ]
+        },
+        {
+            "id": "encender-compartir",
+            "order": 6,
+            "poster_at": 336,
+            "segments": [
+                { "start": 335, "duration": 6.5, "redactions": ["app_user_header", "account_name_scrolled", "log_stream_key_line", "credentials_panel"] }
+            ]
+        }
+    ]
+}

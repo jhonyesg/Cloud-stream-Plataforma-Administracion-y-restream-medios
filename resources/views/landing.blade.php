@@ -9,6 +9,70 @@
     $plan2 = config('seo.plans.plan2');
     $plan3 = config('seo.plans.plan3');
     $wa = preg_replace('/^\+/', '', config('seo.company.phone_e164'));
+
+    // Walkthrough público: emisión a YouTube en 6 pasos.
+    // Los medios los genera scripts/build-video-walkthrough.php a partir del
+    // manifiesto scripts/video-walkthrough.source.json.
+    $walkthroughSlug = 'youtube-walkthrough';
+    $walkthroughChapters = [
+        [
+            'id' => 'el-panel',
+            'image' => "/images/demo/{$walkthroughSlug}/el-panel.jpg",
+            'start' => 0,
+            'title' => 'Todo el módulo en una pantalla',
+            'text' => 'El panel de Restream muestra el canal de contexto, los slots que te quedan disponibles, las cuentas conectadas (YouTube, Facebook y TikTok) y la tabla de destinos con su estado.',
+            'alt' => 'Panel del módulo Restream con el canal, los slots disponibles, las cuentas conectadas y la tabla de destinos',
+        ],
+        [
+            'id' => 'conectar-cuenta',
+            'image' => "/images/demo/{$walkthroughSlug}/conectar-cuenta.jpg",
+            'start' => 8,
+            'title' => 'Conecta tu cuenta de YouTube',
+            'text' => 'Vincula tu cuenta con Google OAuth una sola vez y olvídate de las claves RTMP: Cloudstream se autoriza y prepara la emisión por ti. También puedes conectar Facebook desde el mismo bloque.',
+            'alt' => 'Pantalla de consentimiento de Google para autorizar a Cloudstream Restream',
+        ],
+        [
+            'id' => 'crear-destino',
+            'image' => "/images/demo/{$walkthroughSlug}/crear-destino.jpg",
+            'start' => 22,
+            'title' => 'Crea tu destino y ocupa tu slot',
+            'text' => 'Creas el destino, eliges YouTube, activas "Usar mi cuenta" y lo dejas activo. Cada destino activo consume un slot, y tu plan define cuántos tienes disponibles: de 1 a 4 salidas simultáneas.',
+            'alt' => 'Ventana "Destino de Restream" con la plataforma YouTube y la opción de usar la cuenta conectada',
+        ],
+        [
+            'id' => 'programar-ventana',
+            'image' => "/images/demo/{$walkthroughSlug}/programar-ventana.jpg",
+            'start' => 37,
+            'title' => 'Programa la ventana de emisión',
+            'text' => 'Define inicio y fin, la zona horaria (Bogotá por defecto), el título, la privacidad (pública, oculta o privada), la miniatura y si conservas la grabación.',
+            'alt' => 'Ventana "Nueva ventana de emisión" con inicio, fin, zona horaria, título, privacidad y miniatura',
+        ],
+        [
+            'id' => 'varias-ventanas',
+            'image' => "/images/demo/{$walkthroughSlug}/varias-ventanas.jpg",
+            'start' => 60,
+            'title' => 'Una o varias ventanas por destino',
+            'text' => 'El mismo destino admite todas las ventanas que quieras: un noticiero a la mañana, una partida a la tarde, otro evento de noche. Cada una con su horario, su título y su privacidad.',
+            'alt' => 'Pestaña Programación del destino con el calendario de ventanas de emisión',
+        ],
+        [
+            'id' => 'encender-compartir',
+            'image' => "/images/demo/{$walkthroughSlug}/encender-compartir.jpg",
+            'start' => 66,
+            'title' => 'Enciende y comparte',
+            'text' => 'Cloudstream crea la transmisión en tu canal de YouTube, la arranca automáticamente a la hora programada y la detiene automáticamente al terminar. Ves el estado "En vivo en YouTube" en el panel y compartes el link público con tu audiencia.',
+            'alt' => 'Panel Restream con el destino de YouTube en estado "En vivo en YouTube" y el registro del daemon',
+        ],
+    ];
+    $walkthroughVideo = [
+        'name' => 'Emite a YouTube en 6 pasos con Cloudstream',
+        'description' => 'Grabación real del panel de Cloudstream: el módulo de Restream, conectar la cuenta de YouTube, crear el destino, programar la ventana de emisión y encender la transmisión en vivo.',
+        'thumbnail' => "/images/demo/{$walkthroughSlug}/encender-compartir.jpg",
+        'content_url' => "/videos/{$walkthroughSlug}/walkthrough-completo.mp4",
+        'upload_date' => '2026-10-23',
+        'duration' => 'PT73S',
+    ];
+    $schemaData['video'] = $walkthroughVideo;
 @endphp
 
 <x-public-layout
@@ -16,6 +80,9 @@
     :description="$home['description']"
     :canonical="config('seo.site_url') . '/'"
     :schema="['type' => 'home', 'data' => $schemaData]"
+    :video-url="$walkthroughVideo['content_url']"
+    :video-poster="$walkthroughVideo['thumbnail']"
+    :video-duration="67"
 >
     <!-- ====== HERO ====== -->
     <section class="max-w-6xl mx-auto px-4 sm:px-6 pt-16 pb-20 text-center fade-up">
@@ -24,7 +91,7 @@
             Emisión 24/7 · Uptime 99% · Datacenter americano
         </div>
         <h1 class="text-4xl sm:text-6xl font-extrabold tracking-tight title-grad leading-tight mb-6">
-            Transmite tu canal de TV en vivo<br>por Internet en Colombia
+            Señal de TV en vivo por Internet<br>transmitida desde Colombia
         </h1>
         <p class="text-lg text-slate-300 max-w-2xl mx-auto mb-10">
             Lleva tu señal de televisión a Internet con streaming profesional 24/7, programación
@@ -123,22 +190,35 @@
 
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
             <div class="glass-card rounded-2xl overflow-hidden">
-                <img src="{{ asset('images/demo/dashboard.jpg') }}" alt="Panel de inicio de la plataforma Cloudstream con resumen de canales, medios y métricas en vivo" loading="lazy" class="w-full h-auto">
+                <img src="{{ asset('images/demo/dashboard.jpg') }}" srcset="{{ asset('images/demo/dashboard-720.jpg') }} 720w, {{ asset('images/demo/dashboard.jpg') }} 1440w" sizes="(min-width: 640px) 50vw, 100vw" alt="Panel de inicio de la plataforma Cloudstream con resumen de canales, medios y métricas en vivo" loading="lazy" decoding="async" width="1440" height="900" class="w-full h-auto">
                 <p class="px-5 py-4 text-sm text-slate-300">Panel de inicio con el resumen de tus canales, medios y métricas en vivo.</p>
             </div>
             <div class="glass-card rounded-2xl overflow-hidden">
-                <img src="{{ asset('images/demo/media.jpg') }}" alt="Biblioteca multimedia de la plataforma Cloudstream con videos, imágenes y cuñas publicitarias" loading="lazy" class="w-full h-auto">
+                <img src="{{ asset('images/demo/media.jpg') }}" srcset="{{ asset('images/demo/media-720.jpg') }} 720w, {{ asset('images/demo/media.jpg') }} 1440w" sizes="(min-width: 640px) 50vw, 100vw" alt="Biblioteca multimedia de la plataforma Cloudstream con videos, imágenes y cuñas publicitarias" loading="lazy" decoding="async" width="1440" height="900" class="w-full h-auto">
                 <p class="px-5 py-4 text-sm text-slate-300">Biblioteca multimedia para subir y organizar tus videos, imágenes y cuñas.</p>
             </div>
             <div class="glass-card rounded-2xl overflow-hidden">
-                <img src="{{ asset('images/demo/scheduler.jpg') }}" alt="Programador de contenido de la plataforma Cloudstream con calendario mensual de emisión" loading="lazy" class="w-full h-auto">
+                <img src="{{ asset('images/demo/scheduler.jpg') }}" srcset="{{ asset('images/demo/scheduler-720.jpg') }} 720w, {{ asset('images/demo/scheduler.jpg') }} 1440w" sizes="(min-width: 640px) 50vw, 100vw" alt="Programador de contenido de la plataforma Cloudstream con calendario mensual de emisión" loading="lazy" decoding="async" width="1440" height="900" class="w-full h-auto">
                 <p class="px-5 py-4 text-sm text-slate-300">Programador de contenido con calendario mensual para organizar tu parrilla.</p>
             </div>
             <div class="glass-card rounded-2xl overflow-hidden">
-                <img src="{{ asset('images/demo/restream.jpg') }}" alt="Panel de restream de la plataforma Cloudstream para transmitir a plataformas externas" loading="lazy" class="w-full h-auto">
+                <img src="{{ asset('images/demo/restream.jpg') }}" srcset="{{ asset('images/demo/restream-720.jpg') }} 720w, {{ asset('images/demo/restream.jpg') }} 1440w" sizes="(min-width: 640px) 50vw, 100vw" alt="Panel de restream de la plataforma Cloudstream para transmitir a plataformas externas" loading="lazy" decoding="async" width="1440" height="900" class="w-full h-auto">
                 <p class="px-5 py-4 text-sm text-slate-300">Restream a Facebook, YouTube, TikTok y destinos RTMP personalizados.</p>
             </div>
         </div>
+
+        <!-- ====== RESTREAM: CÓMO EMITIR A YOUTUBE ====== -->
+        <div id="youtube" class="text-center mt-16 mb-10">
+            <h3 class="text-2xl sm:text-3xl font-bold text-white mb-3">Emite a YouTube en 6 pasos</h3>
+            <p class="text-slate-400 max-w-2xl mx-auto">Conecta tu cuenta una vez y olvídate de claves RTMP: Cloudstream crea la transmisión, la programa, la emite y la detiene automáticamente. Esto es el panel real, funcionando.</p>
+        </div>
+
+        <x-public-video-walkthrough
+            :chapters="$walkthroughChapters"
+            :src="$walkthroughVideo['content_url']"
+            :poster="$walkthroughVideo['thumbnail']"
+            label="Grabación del flujo de emisión a YouTube en el panel de Cloudstream"
+        />
     </section>
 
     <!-- ====== PLANES ====== -->
@@ -240,6 +320,9 @@
             </div>
         </div>
     </section>
+
+    <!-- ====== FORMATOS DE EMISIÓN Y ENTREGA ====== -->
+    <x-public-delivery-urls />
 
     <!-- ====== FAQ ====== -->
     <section id="faq" class="max-w-3xl mx-auto px-4 sm:px-6 py-16">

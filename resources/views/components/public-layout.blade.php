@@ -1,9 +1,13 @@
 @props([
     'title' => 'Cloudstream | Señal de TV en vivo por Internet en Colombia',
-    'description' => 'Transmite tu canal de TV en vivo por Internet en Colombia. Servicio de señal streaming 24/7 con programador de contenido, cuñas publicitarias, logo, datacenter americano y restream a Facebook, YouTube y TikTok. Planes desde $75.000/mes.',
+    'description' => 'Transmite tu canal de TV en vivo por Internet en Colombia. Servicio de señal streaming 24/7 con programador de contenido, cuñas publicitarias, logo, datacenter americano y restream a Facebook, YouTube y TikTok. Planes desde $80.000/mes.',
     'canonical' => null,
     'ogImage' => null,
     'ogType' => 'website',
+    'videoUrl' => null,
+    'videoPoster' => null,
+    'videoType' => 'video/mp4',
+    'videoDuration' => null,
     'schema' => ['type' => 'home', 'data' => []],
 ])
 
@@ -31,21 +35,15 @@
 <!DOCTYPE html>
 <html lang="es-CO">
 <head>
-    <!-- Google tag (gtag.js) -->
-    <script async src="https://www.googletagmanager.com/gtag/js?id=G-SGM93TMTYJ"></script>
-    <script>
-        window.dataLayer = window.dataLayer || [];
-        function gtag(){dataLayer.push(arguments);}
-        gtag('js', new Date());
-
-        gtag('config', 'G-SGM93TMTYJ');
-    </script>
-
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
     <meta name="author" content="{{ config('seo.company.brand') }}">
     <meta name="theme-color" content="#0a0f2c">
+
+    <link rel="preconnect" href="https://www.googletagmanager.com">
+    <link rel="dns-prefetch" href="https://www.googletagmanager.com">
+
     <link rel="canonical" href="{{ $canonical }}">
     <link rel="alternate" hreflang="es-CO" href="{{ $canonical }}">
     <link rel="alternate" hreflang="es" href="{{ $canonical }}">
@@ -68,12 +66,42 @@
     <meta name="twitter:description" content="{{ $description }}">
     <meta name="twitter:image" content="{{ $ogImage }}">
 
+    @if ($videoUrl)
+        <meta property="og:video" content="{{ str_starts_with($videoUrl, 'http') ? $videoUrl : url($videoUrl) }}">
+        <meta property="og:video:url" content="{{ str_starts_with($videoUrl, 'http') ? $videoUrl : url($videoUrl) }}">
+        <meta property="og:video:type" content="{{ $videoType }}">
+        <meta property="og:video:secure_url" content="{{ str_starts_with($videoUrl, 'http') ? $videoUrl : url($videoUrl) }}">
+        @if ($videoPoster)
+            <meta property="og:video:poster" content="{{ str_starts_with($videoPoster, 'http') ? $videoPoster : url($videoPoster) }}">
+        @endif
+        @if ($videoDuration)
+            <meta property="og:video:duration" content="{{ $videoDuration }}">
+        @endif
+    @endif
+
     <link rel="icon" href="{{ asset('favicon.ico') }}" sizes="any">
     <link rel="icon" type="image/svg+xml" href="{{ asset('favicon.svg') }}">
     <link rel="apple-touch-icon" sizes="180x180" href="{{ asset('icons/icon-180.png') }}">
 
-    <script src="{{ asset('js/tailwind.js') }}"></script>
+    <link rel="stylesheet" href="{{ asset('css/tailwind.min.css') }}">
     <script defer src="{{ asset('js/alpine.min.js') }}"></script>
+
+    <script>
+        window.addEventListener('load', function () {
+            setTimeout(function () {
+                var s = document.createElement('script');
+                s.async = true;
+                s.src = 'https://www.googletagmanager.com/gtag/js?id=G-SGM93TMTYJ';
+                document.head.appendChild(s);
+                s.onload = function () {
+                    window.dataLayer = window.dataLayer || [];
+                    window.gtag = function () { dataLayer.push(arguments); };
+                    gtag('js', new Date());
+                    gtag('config', 'G-SGM93TMTYJ');
+                };
+            }, 2000);
+        });
+    </script>
 
     @include('partials.public.schema', ['schema' => $schema])
 </head>

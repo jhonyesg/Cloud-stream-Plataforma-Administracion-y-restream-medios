@@ -17,6 +17,7 @@ use App\Http\Controllers\Client\MediaController as ClientMediaController;
 use App\Http\Controllers\Client\RestreamTargetController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\PublicSeoController;
+use App\Http\Controllers\PublicVideoController;
 use App\Http\Controllers\RedirectController;
 use Illuminate\Support\Facades\Route;
 
@@ -25,6 +26,12 @@ Route::get('/', [RedirectController::class, 'home'])->name('home');
 Route::get('/sitemap.xml', [PublicSeoController::class, 'sitemap'])->name('sitemap');
 Route::get('/robots.txt', [PublicSeoController::class, 'robots'])->name('robots');
 Route::get('/llms.txt', [PublicSeoController::class, 'llms'])->name('llms');
+
+// Clips del walkthrough público (los .mp4 no los sirve nginx como estáticos).
+Route::get('/videos/{slug}/{file}', [PublicVideoController::class, 'show'])
+    ->where('slug', '[a-z0-9\-]+')
+    ->where('file', '[A-Za-z0-9\-_]+\.mp4')
+    ->name('public.video');
 
 Route::get('/streaming-para-iglesias-colombia', [PublicSeoController::class, 'landing'])->defaults('slug', 'streaming-para-iglesias-colombia')->name('public.landing.iglesias');
 Route::get('/streaming-para-emisoras-de-radio-online', [PublicSeoController::class, 'landing'])->defaults('slug', 'streaming-para-emisoras-de-radio-online')->name('public.landing.emisoras');

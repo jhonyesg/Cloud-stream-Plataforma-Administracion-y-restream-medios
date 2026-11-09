@@ -1,7 +1,7 @@
 @php
     $heroH1 = 'Servidor RTMP en Colombia — Ingest para OBS, vMix y Wirecast';
     $heroBadge = 'Redundancia · Bitrate configurable · Baja latencia';
-    $heroIntro = 'Conecta tu <strong>OBS Studio, vMix, Wirecast o XSplit</strong> a nuestro servidor RTMP y emite tu canal de TV en vivo con baja latencia y redundancia. Cloudstream te entrega una URL de ingest estable, clave de stream privada, y la posibilidad de configurar bitrate, resolución y codecs según tu necesidad. Ideal para canales de TV, productoras, iglesias y emisoras que ya tienen su equipo de emisión y solo necesitan un servidor profesional que no se caiga. Planes desde $75.000/mes.';
+    $heroIntro = 'Conecta tu <strong>OBS Studio, vMix, Wirecast o XSplit</strong> a nuestro servidor RTMP y emite tu canal de TV en vivo con baja latencia y redundancia. Cloudstream te entrega una URL de ingest estable, clave de stream privada, y la posibilidad de configurar bitrate, resolución y codecs según tu necesidad. Ideal para canales de TV, productoras, iglesias y emisoras que ya tienen su equipo de emisión y solo necesitan un servidor profesional que no se caiga. Planes desde $80.000/mes.';
     $heroCtaText = 'Hola, quiero información sobre el servidor RTMP de Cloudstream';
     $features = [
         ['icon' => '📡', 'title' => 'Ingest RTMP estándar', 'text' => 'Compatible con OBS Studio, vMix, Wirecast, XSplit, Streamlabs OBS, ffmpeg y cualquier software que soporte protocolo RTMP.'],
@@ -28,7 +28,7 @@
     :schema="['type' => 'landing', 'data' => [
         'service_name' => 'Servidor RTMP en Colombia',
         'service_type' => 'Servidor de ingest RTMP para software de emisión',
-        'service_description' => 'Servidor RTMP en datacenter americano para ingest desde OBS, vMix, Wirecast y XSplit. Baja latencia, redundancia automática, clave de stream privada. Planes desde $75.000/mes.',
+        'service_description' => 'Servidor RTMP en datacenter americano para ingest desde OBS, vMix, Wirecast y XSplit. Baja latencia, redundancia automática, clave de stream privada. Planes desde $80.000/mes.',
         'faqs' => $faqs,
         'breadcrumbs' => [
             ['name' => 'Inicio', 'path' => '/'],

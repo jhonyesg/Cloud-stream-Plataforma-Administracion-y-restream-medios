@@ -30,6 +30,7 @@
         <nav class="hidden md:flex items-center gap-6 text-sm text-slate-300" aria-label="Navegación principal">
             <a href="{{ url('/') }}#servicios" class="hover:text-white transition">Servicios</a>
             <a href="{{ url('/') }}#planes" class="hover:text-white transition">Planes</a>
+            <a href="{{ url('/') }}#formatos" class="hover:text-white transition">Formatos</a>
             <a href="{{ url('/') }}#contacto" class="hover:text-white transition">Contacto</a>
             <a href="{{ url('/blog') }}" class="hover:text-white transition">Blog</a>
             <a href="{{ url('/preguntas-frecuentes') }}" class="hover:text-white transition">FAQ</a>

@@ -1,7 +1,7 @@
 @php
     $wa = preg_replace('/^\+/', '', config('seo.company.phone_e164'));
     $faqs = [
-        ['q' => '¿Cuánto cuesta transmitir un canal de TV en vivo en Colombia?', 'a' => 'En Colombia los precios van desde $75.000/mes (plan básico con servidor RTMP y señal 24/7) hasta $164.000/mes (plan con restream a 4 destinos). Los servicios internacionales como Dacast o Wowza cobran en dólares desde $35 USD/mes. La diferencia es que Cloudstream factura en pesos colombianos y emite factura electrónica local.'],
+        ['q' => '¿Cuánto cuesta transmitir un canal de TV en vivo en Colombia?', 'a' => 'En Colombia los precios van desde $80.000/mes (plan básico con servidor RTMP y señal 24/7) hasta $164.000/mes (plan con restream a 4 destinos). Los servicios internacionales como Dacast o Wowza cobran en dólares desde $35 USD/mes. La diferencia es que Cloudstream factura en pesos colombianos y emite factura electrónica local.'],
         ['q' => '¿Puedo transmitir gratis con YouTube Live o Facebook Live?', 'a' => 'Sí, ambas plataformas son gratuitas, pero tienen limitaciones: no tienes control sobre la monetización, los anuncios son de la plataforma, no puedes personalizar la cuña publicitaria, no tienes programador de contenido, y si te caen en una transmisión no hay soporte técnico. Es válido para empezar, pero si quieres monetizar tu canal y tener control total necesitas un servidor profesional.'],
         ['q' => '¿Qué incluye un plan profesional de streaming en Colombia?', 'a' => 'Un plan profesional incluye: servidor en datacenter americano, protocolos RTMP y HLS, soporte técnico en español, facturación electrónica válida en Colombia, programador de contenido, inserción de cuñas publicitarias, logo personalizado, y compatibilidad con cableoperadores si aplica.'],
     ];
@@ -25,10 +25,10 @@
 
         <figure class="my-6">
             <img src="{{ url('/images/blog/cuanto-cuesta-transmitir-tv-internet.jpg') }}" alt="Comparativa visual de precios y planes para transmitir un canal de TV en vivo por Internet en Colombia en 2026" width="1200" height="600" loading="lazy" class="w-full h-auto rounded-2xl">
-            <figcaption class="text-xs text-slate-500 mt-2 text-center">Desde $75.000/mes hasta plataformas enterprise: los rangos de precio del streaming de TV en Colombia.</figcaption>
+            <figcaption class="text-xs text-slate-500 mt-2 text-center">Desde $80.000/mes hasta plataformas enterprise: los rangos de precio del streaming de TV en Colombia.</figcaption>
         </figure>
 
-        <p class="lead">Si tienes un canal de TV regional, una emisora online, una iglesia o una productora de contenido en Colombia, probablemente te has preguntado cuánto cuesta realmente transmitir tu señal por Internet 24/7. La respuesta corta: desde $75.000/mes con un servidor profesional colombiano, hasta gratis si aceptas las limitaciones de YouTube Live y Facebook Live. La respuesta larga es lo que vamos a desglosar en este artículo.</p>
+        <p class="lead">Si tienes un canal de TV regional, una emisora online, una iglesia o una productora de contenido en Colombia, probablemente te has preguntado cuánto cuesta realmente transmitir tu señal por Internet 24/7. La respuesta corta: desde $80.000/mes con un servidor profesional colombiano, hasta gratis si aceptas las limitaciones de YouTube Live y Facebook Live. La respuesta larga es lo que vamos a desglosar en este artículo.</p>
 
         <h2>Los tres rangos de precio que existen en Colombia</h2>
 
@@ -36,7 +36,7 @@
 
         <ul>
             <li><strong>Rango gratis ($0/mes)</strong>: YouTube Live, Facebook Live, Twitch. Plataformas gratuitas que te permiten emitir en vivo sin pagar un servidor. La limitante es que no controlas la monetización ni los anuncios, y dependes de los términos de servicio de cada plataforma.</li>
-            <li><strong>Rango medio ($75.000 – $164.000 COP/mes)</strong>: servidores profesionales colombianos como Cloudstream, con datacenter americano, soporte en español y facturación electrónica local. Es el rango donde están la mayoría de canales pequeños y medianos.</li>
+            <li><strong>Rango medio ($80.000 – $164.000 COP/mes)</strong>: servidores profesionales colombianos como Cloudstream, con datacenter americano, soporte en español y facturación electrónica local. Es el rango donde están la mayoría de canales pequeños y medianos.</li>
             <li><strong>Rango premium ($35 – $500 USD/mes)</strong>: plataformas internacionales como Dacast, Wowza, Vimeo OTT. Facturan en dólares, sin representación local, pero ofrecen infraestructura de primer nivel para canales grandes.</li>
         </ul>
 
@@ -44,7 +44,7 @@
 
         <p>No todos los planes son iguales. Hay diferencias importantes que afectan tu operación diaria:</p>
 
-        <h3>Plan básico ($75.000 COP/mes)</h3>
+        <h3>Plan básico ($80.000 COP/mes)</h3>
 
         <p>El plan de entrada incluye:</p>
         <ul>
@@ -125,7 +125,7 @@
                 </tr>
             </thead>
             <tbody>
-                <tr><td class="py-1">Cloudstream Plan 1</td><td>$75.000 COP/mes</td><td>Sí</td><td>Sí</td></tr>
+                <tr><td class="py-1">Cloudstream Plan 1</td><td>$80.000 COP/mes</td><td>Sí</td><td>Sí</td></tr>
                 <tr><td class="py-1">Cloudstream Plan 2</td><td>$125.000 COP/mes</td><td>Sí</td><td>Sí</td></tr>
                 <tr><td class="py-1">Dacast</td><td>desde $35 USD/mes</td><td>Limitado</td><td>No</td></tr>
                 <tr><td class="py-1">Wowza</td><td>desde $49 USD/mes</td><td>Limitado</td><td>No</td></tr>
@@ -140,7 +140,7 @@
         <p>Y si todavía estás probando, YouTube Live es una buena manera de validar tu audiencia antes de invertir. Eso sí: en el momento en que quieras monetizar, tener tu propio servidor es indispensable.</p>
 
         <div class="mt-12 glass-card rounded-2xl p-8 text-center not-prose">
-            <h2 class="text-2xl font-bold title-grad mb-3">Empieza con Cloudstream desde $75.000/mes</h2>
+            <h2 class="text-2xl font-bold title-grad mb-3">Empieza con Cloudstream desde $80.000/mes</h2>
             <p class="text-slate-400 mb-6">Servidor profesional en datacenter americano, soporte en español, factura electrónica local.</p>
             <div class="flex flex-col sm:flex-row items-center justify-center gap-4">
                 <a href="https://wa.me/{{ $wa }}?text={{ urlencode('Hola, quiero información sobre los planes de Cloudstream') }}" target="_blank" rel="noopener" class="btn-primary text-white font-semibold px-8 py-4 rounded-xl">Hablar por WhatsApp</a>

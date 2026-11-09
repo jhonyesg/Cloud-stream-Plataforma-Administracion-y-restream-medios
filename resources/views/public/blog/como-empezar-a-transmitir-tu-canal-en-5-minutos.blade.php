@@ -125,7 +125,7 @@
 
         <div class="mt-12 glass-card rounded-2xl p-8 text-center not-prose">
             <h2 class="text-2xl font-bold title-grad mb-3">Empieza en 5 minutos</h2>
-            <p class="text-slate-400 mb-6">Cloudstream Plan 1 desde $75.000/mes. Te entregamos URL y clave, tú configuras OBS.</p>
+            <p class="text-slate-400 mb-6">Cloudstream Plan 1 desde $80.000/mes. Te entregamos URL y clave, tú configuras OBS.</p>
             <div class="flex flex-col sm:flex-row items-center justify-center gap-4">
                 <a href="https://wa.me/{{ $wa }}?text={{ urlencode('Hola, quiero contratar el plan Señal Streaming de Cloudstream') }}" target="_blank" rel="noopener" class="btn-primary text-white font-semibold px-8 py-4 rounded-xl">Contratar ahora</a>
                 <a href="{{ url('/servidor-rtmp-colombia') }}" class="btn-ghost text-slate-200 font-medium px-8 py-4 rounded-xl">Ver servidor RTMP</a>

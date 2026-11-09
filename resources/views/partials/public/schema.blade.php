@@ -131,6 +131,17 @@
                 $breadcrumb([
                     ['name' => 'Inicio', 'path' => '/'],
                 ]),
+                ...(isset($data['video']) ? [[
+                    '@type' => 'VideoObject',
+                    '@id' => $site . '/#video-youtube-walkthrough',
+                    'name' => $data['video']['name'] ?? '',
+                    'description' => $data['video']['description'] ?? '',
+                    'thumbnailUrl' => $site . ($data['video']['thumbnail'] ?? ''),
+                    'uploadDate' => $data['video']['upload_date'] ?? '',
+                    'duration' => $data['video']['duration'] ?? '',
+                    'contentUrl' => $site . ($data['video']['content_url'] ?? ''),
+                    'inLanguage' => 'es-CO',
+                ]] : []),
             ]);
             break;
 
@@ -164,7 +175,34 @@
                         'lowPrice' => (string) $plans['plan1']['price_cop'],
                         'highPrice' => (string) $plans['plan2']['price_cop'],
                         'offerCount' => '3',
+                        'offers' => [
+                            $planToOffer('plan1', $plans['plan1']),
+                            $planToOffer('plan2', $plans['plan2']),
+                            $planToOffer('plan3', $plans['plan3']),
+                        ],
                     ],
+                ],
+                [
+                    '@type' => 'Offer',
+                    'name' => $plans['plan1']['name'],
+                    'description' => $plans['plan1']['description'],
+                    'price' => (string) $plans['plan1']['price_cop'],
+                    'priceCurrency' => 'COP',
+                    'url' => $site . '/#plan-plan1',
+                    'seller' => ['@id' => $orgId],
+                    'areaServed' => $company['country_code'],
+                    'eligibleQuantity' => ['@type' => 'QuantitativeValue', 'value' => 1, 'unitText' => 'mes'],
+                ],
+                [
+                    '@type' => 'Offer',
+                    'name' => $plans['plan2']['name'],
+                    'description' => $plans['plan2']['description'],
+                    'price' => (string) $plans['plan2']['price_cop'],
+                    'priceCurrency' => 'COP',
+                    'url' => $site . '/#plan-plan2',
+                    'seller' => ['@id' => $orgId],
+                    'areaServed' => $company['country_code'],
+                    'eligibleQuantity' => ['@type' => 'QuantitativeValue', 'value' => 1, 'unitText' => 'mes'],
                 ],
                 [
                     '@type' => 'FAQPage',

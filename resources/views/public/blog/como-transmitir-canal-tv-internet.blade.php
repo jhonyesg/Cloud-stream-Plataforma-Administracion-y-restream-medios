@@ -48,12 +48,12 @@
         <p>El servidor streaming es la pieza central: recibe la señal de tu estudio (ingest) y la entrega a tu audiencia (distribución). En Colombia tienes varias opciones:</p>
 
         <ul>
-            <li><strong>Cloudstream</strong>: desde $75.000 COP/mes con datacenter americano, factura electrónica y soporte en español.</li>
+            <li><strong>Cloudstream</strong>: desde $80.000 COP/mes con datacenter americano, factura electrónica y soporte en español.</li>
             <li><strong>Dacast, Wowza, Vimeo</strong>: plataformas internacionales desde $35 USD/mes, facturación en dólares.</li>
             <li><strong>YouTube Live / Facebook Live</strong>: gratis, pero sin control sobre monetización ni programación.</li>
         </ul>
 
-        <p>Para empezar te recomendamos Cloudstream Plan 1 ($75.000/mes) si vas a emitir desde tu propio equipo, o Plan 2 ($125.000/mes) si quieres emisión desde la nube con programador de contenido.</p>
+        <p>Para empezar te recomendamos Cloudstream Plan 1 ($80.000/mes) si vas a emitir desde tu propio equipo, o Plan 2 ($125.000/mes) si quieres emisión desde la nube con programador de contenido.</p>
 
         <h2>Paso 3: Configura tu estudio de emisión</h2>
 

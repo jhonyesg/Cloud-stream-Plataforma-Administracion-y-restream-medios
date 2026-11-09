@@ -138,7 +138,7 @@
             </thead>
             <tbody>
                 <tr><td class="py-1">OBS Studio</td><td>Gratis</td><td>Emisión puntual desde tu PC</td></tr>
-                <tr><td class="py-1">Cloudstream</td><td>$75.000 – $164.000 COP/mes</td><td>Canales 24/7 sin equipo encendido</td></tr>
+                <tr><td class="py-1">Cloudstream</td><td>$80.000 – $164.000 COP/mes</td><td>Canales 24/7 sin equipo encendido</td></tr>
                 <tr><td class="py-1">vMix</td><td>$60 – $1.200 USD</td><td>Producción profesional multi-cámara</td></tr>
                 <tr><td class="py-1">Wowza</td><td>$49+ USD/mes</td><td>Servidor auto-administrado</td></tr>
                 <tr><td class="py-1">AWS IVS</td><td>Por uso</td><td>Streaming interactivo de baja latencia</td></tr>

@@ -1,7 +1,7 @@
 @php
     $heroH1 = 'Streaming para Emisoras de Radio Online en Colombia — Audio + Video en Vivo';
     $heroBadge = 'Baja latencia · Apps móviles · Monetización con cuñas';
-    $heroIntro = 'Convierte tu <strong>emisora de radio online en un canal de TV por Internet</strong> sin cambiar tu operación actual. Con Cloudstream tu señal de audio se complementa con video en vivo — la cabina, los locutores, los invitados — y se transmite 24/7 con protocolos RTMP y HLS. Tu audiencia podrá verte en Facebook, YouTube, TikTok o en una página web propia, mientras sigues emitiendo audio en tus apps móviles y en tu dial digital. Planes desde $75.000/mes con programador de contenido, cuñas publicitarias y restream a redes sociales.';
+    $heroIntro = 'Convierte tu <strong>emisora de radio online en un canal de TV por Internet</strong> sin cambiar tu operación actual. Con Cloudstream tu señal de audio se complementa con video en vivo — la cabina, los locutores, los invitados — y se transmite 24/7 con protocolos RTMP y HLS. Tu audiencia podrá verte en Facebook, YouTube, TikTok o en una página web propia, mientras sigues emitiendo audio en tus apps móviles y en tu dial digital. Planes desde $80.000/mes con programador de contenido, cuñas publicitarias y restream a redes sociales.';
     $heroCtaText = 'Hola, quiero información sobre el plan para emisoras de radio online de Cloudstream';
     $features = [
         ['icon' => '🎙️', 'title' => 'Video de la cabina en vivo', 'text' => 'Instala una cámara en tu cabina y transmite la imagen de tus locutores junto con el audio. El formato funciona especialmente bien para emisoras juveniles y musicales.'],

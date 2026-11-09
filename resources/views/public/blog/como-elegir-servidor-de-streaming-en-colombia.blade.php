@@ -76,7 +76,7 @@
 
         <h2>Nuestra recomendación</h2>
 
-        <p>Para canales colombianos pequeños y medianos, un proveedor local como Cloudstream cumple los 7 criterios a un precio accesible ($75.000 – $164.000 COP/mes) y con soporte en español. Para canales grandes con audiencia internacional, AWS IVS o Wowza son las opciones enterprise. Para empezar gratis, YouTube Live es válido, pero no te da control sobre monetización ni programación.</p>
+        <p>Para canales colombianos pequeños y medianos, un proveedor local como Cloudstream cumple los 7 criterios a un precio accesible ($80.000 – $164.000 COP/mes) y con soporte en español. Para canales grandes con audiencia internacional, AWS IVS o Wowza son las opciones enterprise. Para empezar gratis, YouTube Live es válido, pero no te da control sobre monetización ni programación.</p>
 
         <div class="mt-12 glass-card rounded-2xl p-8 text-center not-prose">
             <h2 class="text-2xl font-bold title-grad mb-3">Servidor streaming en Colombia</h2>

@@ -1,0 +1,55 @@
+{
+    "slug": "youtube-walkthrough",
+    "video": "/videos/youtube-walkthrough/walkthrough-completo.mp4",
+    "duration_sec": 73,
+    "chapters": [
+        {
+            "id": "el-panel",
+            "order": 1,
+            "duration_sec": 8,
+            "media": "/videos/youtube-walkthrough/el-panel.mp4",
+            "poster": "/images/demo/youtube-walkthrough/el-panel.jpg",
+            "start": 0
+        },
+        {
+            "id": "conectar-cuenta",
+            "order": 2,
+            "duration_sec": 14,
+            "media": "/videos/youtube-walkthrough/conectar-cuenta.mp4",
+            "poster": "/images/demo/youtube-walkthrough/conectar-cuenta.jpg",
+            "start": 8
+        },
+        {
+            "id": "crear-destino",
+            "order": 3,
+            "duration_sec": 15,
+            "media": "/videos/youtube-walkthrough/crear-destino.mp4",
+            "poster": "/images/demo/youtube-walkthrough/crear-destino.jpg",
+            "start": 22
+        },
+        {
+            "id": "programar-ventana",
+            "order": 4,
+            "duration_sec": 23,
+            "media": "/videos/youtube-walkthrough/programar-ventana.mp4",
+            "poster": "/images/demo/youtube-walkthrough/programar-ventana.jpg",
+            "start": 37
+        },
+        {
+            "id": "varias-ventanas",
+            "order": 5,
+            "duration_sec": 6,
+            "media": "/videos/youtube-walkthrough/varias-ventanas.mp4",
+            "poster": "/images/demo/youtube-walkthrough/varias-ventanas.jpg",
+            "start": 60
+        },
+        {
+            "id": "encender-compartir",
+            "order": 6,
+            "duration_sec": 7,
+            "media": "/videos/youtube-walkthrough/encender-compartir.mp4",
+            "poster": "/images/demo/youtube-walkthrough/encender-compartir.jpg",
+            "start": 66
+        }
+    ]
+}

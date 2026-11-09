@@ -2,7 +2,7 @@
     $wa = preg_replace('/^\+/', '', config('seo.company.phone_e164'));
     $faqs = [
         ['q' => '¿Qué equipo mínimo necesita una iglesia para transmitir?', 'a' => 'Para empezar basta con: una cámara (puede ser un celular moderno o una webcam Logitech C920), un trípode, un micrófono (lavalier o de mesa), un computador con OBS Studio, y conexión a internet con mínimo 5 Mbps de subida. Con Cloudstream el servidor lo proveemos nosotros.'],
-        ['q' => '¿Cuánto cuesta transmitir misas por Internet en Colombia?', 'a' => 'Con Cloudstream desde $75.000/mes tienes servidor profesional con soporte local. Si sumas equipo (cámara, trípode, micrófono, computador), la inversión inicial puede estar entre $1.500.000 y $4.000.000 COP. A partir del segundo año, el costo recurrente es solo el plan mensual.'],
+        ['q' => '¿Cuánto cuesta transmitir misas por Internet en Colombia?', 'a' => 'Con Cloudstream desde $80.000/mes tienes servidor profesional con soporte local. Si sumas equipo (cámara, trípode, micrófono, computador), la inversión inicial puede estar entre $1.500.000 y $4.000.000 COP. A partir del segundo año, el costo recurrente es solo el plan mensual.'],
         ['q' => '¿Puedo transmitir desde el templo con internet lento?', 'a' => 'Sí, con ajustes. Si tu conexión de subida es de 1-2 Mbps, emite a 480p (calidad estándar) con bitrate de 600-800 Kbps. Para mejorar estabilidad, usa conexión por cable (no WiFi) y evita compartir el internet con otros usuarios durante la transmisión.'],
     ];
 @endphp
@@ -72,7 +72,7 @@
         <p>El servidor streaming es el componente que recibe tu señal de OBS y la entrega a tu audiencia. Cloudstream es la opción colombiana más práctica:</p>
 
         <ul>
-            <li>Plan Señal Streaming: $75.000/mes (si emites desde tu propio equipo con OBS).</li>
+            <li>Plan Señal Streaming: $80.000/mes (si emites desde tu propio equipo con OBS).</li>
             <li>Plan Plataforma Completa: $125.000/mes (si quieres emisión desde la nube con programador).</li>
             <li>Soporte en español por WhatsApp.</li>
             <li>Factura electrónica válida para la DIAN.</li>
@@ -116,8 +116,8 @@
 
         <ul>
             <li><strong>Inversión inicial en equipo</strong>: $1.500.000 – $2.500.000 COP (una sola vez).</li>
-            <li><strong>Plan Cloudstream</strong>: $75.000 – $125.000 COP/mes = $900.000 – $1.500.000 COP/año.</li>
-            <li><strong>Total primer año</strong>: entre $2.400.000 y $4.000.000 COP.</li>
+            <li><strong>Plan Cloudstream</strong>: $80.000 – $125.000 COP/mes = $960.000 – $1.500.000 COP/año.</li>
+            <li><strong>Total primer año</strong>: entre $2.460.000 y $4.000.000 COP.</li>
         </ul>
 
         <p>Es una inversión accesible para la mayoría de parroquias, especialmente si se compara con el alcance que se logra.</p>
