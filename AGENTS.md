@@ -375,6 +375,29 @@ log, and a systemd unit per target. The old PHP launcher/supervisor
   dot with `last_error` as tooltip.
 - **FFmpeg binary** resolved from `FFMPEG_BIN` env (default `ffmpeg`) by
   the orchestrator and written into the daemon config.
+- **Stopping is real** (`RestreamOrchestrator::stop()`, change
+  `openspec/changes/restream-stop-real/`):
+  - The daemon PID is resolved by scanning `/proc/*/cmdline` for
+    `restream_daemon/main.py --target-id=<uuid>` — `pipeline_pid` may be
+    NULL (a previous stop clears it) or may hold the ffmpeg child's PID.
+  - Liveness is checked with `/proc/<pid>/stat` (a `Z` state = dead).
+    `posix_kill($pid, 0)` returns false on EPERM too, which used to be
+    mistaken for "the process is gone".
+  - If the signal is refused (the daemon runs as `root`, the panel as
+    `www`), Laravel writes `storage/app/restream-daemons/<id>.stop`; the
+    daemon polls it every 5 s and shuts down gracefully.
+  - Orphan ffmpeg processes still pushing `destination_url/stream_key` are
+    killed too.
+  - The target is only marked `idle` when the process is really gone;
+    otherwise the endpoint answers **409** with the reason (never a fake
+    "Destino detenido.").
+- **The scheduler runs as `www`** (cron `artisan schedule:run` moved out of
+  root's crontab): daemons spawned by the scheduler must be signalable by
+  the panel, which runs as `www` under PHP-FPM.
+- **Orphan daemon reaper**: `php artisan restream:reap-orphan-daemons
+  [--dry-run]` (every minute) stops daemons whose target no longer exists
+  (deleted from the panel → they kept emitting invisibly) and adopts the
+  real PID of the ones whose `pipeline_pid` was lost.
 - **Deployment**: per-target systemd unit
   `restream_daemon/systemd/cloudstream-restream@.service`
   (`ExecStart=/usr/bin/python3 .../restream_daemon/main.py --target-id=%i`),

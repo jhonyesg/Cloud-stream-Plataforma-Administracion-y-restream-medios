@@ -195,53 +195,87 @@ class RestreamOrchestrator
     }
 
     /**
-     * Signal the daemon to stop and wait for its offline heartbeat.
+     * Signal the daemon to stop and WAIT until it is really gone.
+     *
+     * Returns the outcome instead of void so the caller can tell the operator
+     * the truth:
+     *   ['stopped' => bool, 'pid' => ?int, 'method' => string, 'reason' => ?string]
+     *
+     * Why the extra machinery: the daemon does not always run as the same OS
+     * user as PHP-FPM. The scheduler (cron) runs as root and spawns the
+     * daemons as root, while the panel runs as www, so `posix_kill()` fails
+     * with EPERM. The old code ignored that failure and reported "stopped"
+     * while the daemon kept pushing to YouTube — and the next "Detener"
+     * found `pipeline_pid` already null and did nothing at all.
+     *
+     * Now:
+     *   1. resolve the daemon PID by scanning /proc (the recorded
+     *      `pipeline_pid` may be null or may even hold the ffmpeg child's
+     *      PID from an older heartbeat),
+     *   2. try SIGTERM and, on EPERM, fall back to the stop-flag file that
+     *      the daemon polls every 5s,
+     *   3. kill any orphan ffmpeg still pushing this target's destination,
+     *   4. verify the process is really gone before marking the target idle.
      */
-    public function stop(RestreamTarget $target): void
+    public function stop(RestreamTarget $target): array
     {
-        $pid = $target->pipeline_pid;
-        if (! $pid) {
+        $pid = $this->resolveDaemonPid($target);
+
+        if ($pid === null) {
+            // Nothing running. Clean the row (a previous stop may have left
+            // the PID behind, or the daemon died on its own).
+            $this->killOrphanPipelines($target);
             $target->update([
                 'status' => RestreamTarget::STATUS_IDLE,
                 'pipeline_pid' => null,
                 'last_stopped_at' => now(),
+                'last_error' => null,
             ]);
-            return;
+            Log::info('[restream] stop: no daemon running', ['target_id' => $target->id]);
+
+            return ['stopped' => true, 'pid' => null, 'method' => 'none', 'reason' => null];
         }
 
-        if (! function_exists('posix_kill')) {
-            Log::warning('[restream] stop requested but posix_kill unavailable', ['target_id' => $target->id]);
-            $target->update([
-                'pipeline_pid' => null,
-                'last_stopped_at' => now(),
-                'status' => RestreamTarget::STATUS_IDLE,
-            ]);
-            return;
+        $method = 'signal';
+        $signalled = $this->signalDaemon($pid, SIGTERM);
+
+        if (! $signalled) {
+            // EPERM (or posix_kill unavailable): the daemon belongs to
+            // another user. Ask it to stop through the flag file it polls.
+            $method = 'flag';
+            $this->requestStopFlag($target);
         }
 
-        @posix_kill((int) $pid, SIGTERM);
-
-        // Wait for the daemon's offline heartbeat (it clears pipeline_pid).
         $deadline = time() + self::OFFLINE_WAIT_SECONDS;
-        while (time() < $deadline) {
-            $fresh = RestreamTarget::find($target->id);
-            if ($fresh && $fresh->pipeline_pid === null) {
-                break;
-            }
+        while (time() < $deadline && $this->processAlive($pid)) {
             usleep(500_000);
         }
 
-        // Force kill if still alive after the grace period.
-        $deadline = time() + self::STOP_GRACE_SECONDS;
-        while (time() < $deadline) {
-            if (! @posix_kill((int) $pid, 0)) {
-                break;
+        if ($this->processAlive($pid)) {
+            $this->signalDaemon($pid, SIGKILL);
+            $deadline = time() + self::STOP_GRACE_SECONDS;
+            while (time() < $deadline && $this->processAlive($pid)) {
+                usleep(500_000);
             }
-            usleep(500_000);
         }
-        if (@posix_kill((int) $pid, 0)) {
-            @posix_kill((int) $pid, SIGKILL);
-            usleep(200_000);
+
+        $alive = $this->processAlive($pid);
+        $orphans = $this->killOrphanPipelines($target);
+
+        if ($alive) {
+            $reason = 'El daemon no se pudo detener: el sistema rechazó las señales (permisos). '
+                . 'Quedó emitido: se requiere detenerlo desde el servidor.';
+            Log::error('[restream] stop failed: daemon still alive', [
+                'target_id' => $target->id,
+                'pid' => $pid,
+                'method' => $method,
+            ]);
+            $target->update([
+                'status' => RestreamTarget::STATUS_ERROR,
+                'last_error' => $reason,
+            ]);
+
+            return ['stopped' => false, 'pid' => $pid, 'method' => $method, 'reason' => $reason];
         }
 
         // Transition the bound YouTube broadcast to `complete` before we clear
@@ -291,8 +325,184 @@ class RestreamOrchestrator
             'target_id' => $target->id,
             'platform' => $target->platform,
             'previous_pid' => $pid,
+            'method' => $method,
+            'orphan_pipelines_killed' => $orphans,
             'youtube_transition' => $youtubeTransitionOk,
         ]);
+
+        return ['stopped' => true, 'pid' => $pid, 'method' => $method, 'reason' => null];
+    }
+
+    /**
+     * PID of the daemon that serves this target, or null when none runs.
+     */
+    private function resolveDaemonPid(RestreamTarget $target): ?int
+    {
+        $fragment = $this->daemonCmdlineFragment($target);
+
+        $recorded = (int) ($target->pipeline_pid ?? 0);
+        if ($recorded > 0 && $this->cmdlineContains($recorded, $fragment)) {
+            return $recorded;
+        }
+
+        foreach ($this->findPidsByCmdline($fragment) as $pid) {
+            return $pid;
+        }
+
+        return null;
+    }
+
+    private function daemonCmdlineFragment(RestreamTarget $target): string
+    {
+        return 'restream_daemon/main.py --target-id=' . $target->id;
+    }
+
+    private function cmdlineContains(int $pid, string $needle): bool
+    {
+        $raw = @file_get_contents("/proc/{$pid}/cmdline");
+
+        return $raw !== false && str_contains(str_replace("\0", ' ', $raw), $needle);
+    }
+
+    /**
+     * @return array<int, int>
+     */
+    private function findPidsByCmdline(string $needle): array
+    {
+        $pids = [];
+        $self = getmypid();
+
+        foreach (glob('/proc/[0-9]*/cmdline') ?: [] as $file) {
+            $pid = (int) basename(dirname($file));
+            if ($pid === $self) {
+                continue;
+            }
+            if ($this->cmdlineContains($pid, $needle)) {
+                $pids[] = $pid;
+            }
+        }
+
+        return $pids;
+    }
+
+    /**
+     * Liveness check that works regardless of the process owner: /proc is
+     * readable for every process. `posix_kill($pid, 0)` returns false with
+     * EPERM when the process belongs to another user, which used to be
+     * mistaken for "the process is gone".
+     *
+     * A zombie counts as dead: it no longer runs anything, it only waits to
+     * be reaped by its parent.
+     */
+    private function processAlive(int $pid): bool
+    {
+        if ($pid <= 0 || ! @file_exists("/proc/{$pid}")) {
+            return false;
+        }
+
+        $stat = @file_get_contents("/proc/{$pid}/stat");
+        if ($stat === false) {
+            return true;
+        }
+
+        $state = substr($stat, strrpos($stat, ')') + 2, 1);
+
+        return $state !== 'Z';
+    }
+
+    private function signalDaemon(int $pid, int $signal): bool
+    {
+        if (! function_exists('posix_kill')) {
+            Log::warning('[restream] posix_kill unavailable, cannot signal daemon', ['pid' => $pid]);
+
+            return false;
+        }
+
+        $ok = @posix_kill($pid, $signal);
+        if (! $ok) {
+            Log::warning('[restream] could not signal daemon', [
+                'pid' => $pid,
+                'signal' => $signal,
+                'errno' => function_exists('posix_get_last_error') ? posix_get_last_error() : null,
+            ]);
+        }
+
+        return (bool) $ok;
+    }
+
+    /**
+     * Ask the daemon to stop through the flag file it polls (used when the
+     * signal cannot be delivered because of OS permissions).
+     */
+    private function requestStopFlag(RestreamTarget $target): void
+    {
+        $path = storage_path('app/' . self::CONFIG_DIR . '/' . $target->id . '.stop');
+
+        try {
+            if (! is_dir(dirname($path))) {
+                @mkdir(dirname($path), 0775, true);
+            }
+            @file_put_contents($path, (string) now()->getTimestamp());
+            Log::info('[restream] stop flag written', ['target_id' => $target->id, 'path' => $path]);
+        } catch (Throwable $e) {
+            Log::warning('[restream] could not write stop flag', [
+                'target_id' => $target->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Kill any ffmpeg still pushing this target's destination. If the daemon
+     * died but its child survived, that orphan keeps the emission alive on
+     * YouTube long after "Detener".
+     */
+    private function killOrphanPipelines(RestreamTarget $target): int
+    {
+        $needle = $this->destinationNeedle($target);
+        if ($needle === '') {
+            return 0;
+        }
+
+        $killed = 0;
+        foreach ($this->findPidsByCmdline($needle) as $pid) {
+            if (@posix_kill($pid, SIGKILL)) {
+                $killed++;
+            }
+        }
+
+        if ($killed > 0) {
+            Log::warning('[restream] killed orphan ffmpeg pipelines', [
+                'target_id' => $target->id,
+                'count' => $killed,
+            ]);
+        }
+
+        return $killed;
+    }
+
+    /**
+     * The daemon runs ffmpeg with "<destination_url>/<stream_key>" as a single
+     * argument, so that exact string identifies the pipeline of this target.
+     */
+    private function destinationNeedle(RestreamTarget $target): string
+    {
+        $destination = trim((string) $target->destination_url);
+        if ($destination === '') {
+            return '';
+        }
+
+        try {
+            $key = $target->revealStreamKey();
+        } catch (Throwable) {
+            $key = '';
+        }
+
+        if ($key === '') {
+            return $destination;
+        }
+
+        return rtrim($destination, '/') . '/' . $key;
     }
 
     /**

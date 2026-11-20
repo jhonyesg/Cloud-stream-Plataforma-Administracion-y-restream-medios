@@ -168,6 +168,13 @@ class TargetDaemon:
     def _heartbeat_loop(self) -> None:
         """Background thread: send heartbeat to Laravel every 5s."""
         while not self._stop_event.is_set():
+            # Laravel may not be able to signal us (the daemon can run as a
+            # different OS user than PHP-FPM: the scheduler runs as root and
+            # spawns the daemon as root, while the panel runs as www, so
+            # posix_kill() fails with EPERM). In that case Laravel writes a
+            # stop flag and we shut ourselves down.
+            if self._stop_requested():
+                break
             try:
                 pid = self.pipeline.proc.pid if self.pipeline and self.pipeline.proc else None
                 self.client.post_restream_heartbeat(self.target_id, {
@@ -180,6 +187,22 @@ class TargetDaemon:
                 self._log(f"[DAEMON] Heartbeat error: {e}")
             self._stop_event.wait(5)
 
+    def _stop_flag_path(self) -> str:
+        return os.path.join(CONFIG_DIR, f"{self.target_id}.stop")
+
+    def _stop_requested(self) -> bool:
+        """Check (and consume) the stop flag written by Laravel."""
+        path = self._stop_flag_path()
+        if not os.path.exists(path):
+            return False
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+        self._log("[DAEMON] Stop flag received, shutting down gracefully")
+        self._stop_event.set()
+        return True
+
     def _stats_loop(self) -> None:
         """Background thread: log stream stats every 5s + watchdog."""
         last_frames = 0
@@ -188,6 +211,8 @@ class TargetDaemon:
         dead_output_reported = False
         while not self._stop_event.is_set():
             self._stop_event.wait(5)
+            if self._stop_requested():
+                return
             if not self.pipeline or not self._running:
                 continue
             try:

@@ -608,19 +608,35 @@ class RestreamTargetController extends Controller
     {
         abort_unless($target->channel_id === $channel->id, 404, 'Destino no pertenece a este canal.');
 
-        $this->orchestrator->stop($target);
+        $result = $this->orchestrator->stop($target);
 
         AuditLog::record(
             action: 'stop.restream_target',
             entityType: 'restream_target',
             entityId: $target->id,
             before: null,
-            after: ['status' => 'idle', 'pipeline_pid' => null],
+            after: [
+                'status' => $result['stopped'] ? 'idle' : 'error',
+                'pipeline_pid' => $result['stopped'] ? null : $result['pid'],
+                'stop_method' => $result['method'],
+            ],
             channelId: $channel->id,
         );
 
+        if (! $result['stopped']) {
+            return response()->json([
+                'message' => $result['reason'] ?? 'No se pudo detener el destino.',
+                'error' => $result['reason'] ?? 'stop_failed',
+                'stopped' => false,
+                'target' => $target->fresh(),
+                'status' => $target->fresh()?->status,
+                'pipeline_pid' => $result['pid'],
+            ], 409);
+        }
+
         return response()->json([
             'message' => 'Destino detenido.',
+            'stopped' => true,
             'target' => $target->fresh(),
             'status' => 'idle',
             'pipeline_pid' => null,

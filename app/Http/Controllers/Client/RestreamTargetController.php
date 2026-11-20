@@ -502,7 +502,7 @@ $data = $request->validate([
         abort_unless($user->canAccessChannel($channel), 403, 'No tienes acceso a este canal.');
         abort_unless($target->user_id === $user->id && $target->channel_id === $channel->id, 403, 'Destino no pertenece a este canal.');
 
-        $this->orchestrator->stop($target);
+        $result = $this->orchestrator->stop($target);
 
         // Marcar la ventana actualmente aplicable como stopped_by_user para
         // que el motor restream:run-target-schedules no la reencienda al
@@ -522,12 +522,31 @@ $data = $request->validate([
             entityType: 'restream_target',
             entityId: $target->id,
             before: null,
-            after: ['status' => 'idle', 'pipeline_pid' => null],
+            after: [
+                'status' => $result['stopped'] ? 'idle' : 'error',
+                'pipeline_pid' => $result['stopped'] ? null : $result['pid'],
+                'stop_method' => $result['method'],
+            ],
             channelId: $channel->id,
         );
 
+        if (! $result['stopped']) {
+            // No mintamos: si el daemon sigue vivo, la emisión sigue
+            // abierta. Se devuelve 409 con el motivo para que el panel lo
+            // muestre en vez de un "Destino detenido." que no es cierto.
+            return response()->json([
+                'message' => $result['reason'] ?? 'No se pudo detener el destino.',
+                'error' => $result['reason'] ?? 'stop_failed',
+                'stopped' => false,
+                'target' => $target->fresh(),
+                'status' => $target->fresh()?->status,
+                'pipeline_pid' => $result['pid'],
+            ], 409);
+        }
+
         return response()->json([
             'message' => 'Destino detenido.',
+            'stopped' => true,
             'target' => $target->fresh(),
             'status' => 'idle',
             'pipeline_pid' => null,

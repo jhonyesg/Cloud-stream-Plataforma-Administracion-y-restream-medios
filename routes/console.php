@@ -37,6 +37,10 @@ Schedule::command('restream:run-target-schedules')->everyMinute()->withoutOverla
 // fight over the same target inside the same minute.
 Schedule::command('restream:reap-youtube-zombies')->everyMinute()->name('restream-reap-youtube-zombies');
 
+// Daemons cuyo destino ya no existe (borrado desde el panel): siguen
+// empujando a la plataforma sin que nadie los pueda ver ni detener.
+Schedule::command('restream:reap-orphan-daemons')->everyMinute()->name('restream-reap-orphan-daemons');
+
 // Prune append-only event history. Default 90d, override with TARGET_EVENTS_RETENTION_DAYS.
 Schedule::command('restream:prune-target-events')->daily()->name('restream-prune-target-events');
 
